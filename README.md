@@ -38,14 +38,9 @@ build.bat
 
 ## Phát hành bản mới
 1. Tăng `AssemblyVersion` trong `SieuNhanHong.cs` (ví dụ `4.2.0.0`).
-2. Commit, rồi tạo tag cùng số phiên bản và push:
+2. Commit và push lên `main`.
 
-```bat
-git tag v4.2.0
-git push origin main v4.2.0
-```
-
-GitHub Actions tự build `SieuNhanHong.exe` và đăng lên Releases. App của người dùng sẽ thấy bản mới và cập nhật bằng một nút bấm.
+GitHub Actions tự build `SieuNhanHong.exe`; nếu phiên bản đó chưa có bản phát hành, nó tự tạo tag `v4.2.0` và đăng lên Releases. App của người dùng sẽ thấy bản mới và cập nhật bằng một nút bấm.
 
 ## Lưu ý
 - GoodbyeDPI dùng driver WinDivert nên một số phần mềm diệt virus có thể báo nhầm.
