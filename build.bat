@@ -30,6 +30,7 @@ set CSC=%FW%\csc.exe
     /r:System.Core.dll ^
     /r:System.Drawing.dll ^
     /r:System.ServiceProcess.dll ^
+    /r:System.Windows.Forms.dll ^
     /r:"%FW%\System.Web.Extensions.dll" ^
     /r:"%FW%\System.IO.Compression.dll" ^
     /r:"%FW%\System.IO.Compression.FileSystem.dll" ^

@@ -5,14 +5,17 @@
 App Windows giúp vào Steam, đăng nhập và cập nhật game khi nhà mạng chặn Steam bằng DPI (lọc theo tên miền SNI).
 Bên dưới dùng [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI): **không VPN, không lag, tốc độ tải giữ nguyên**.
 
+## Tải về
+Vào mục [**Releases**](../../releases/latest) và tải `SieuNhanHong.exe`. Chỉ cần đúng một file này.
+
 ## Tính năng
 - **Bật/tắt bằng một nút** — tách gói bắt tay TLS để thiết bị lọc của nhà mạng không đọc được tên miền.
-- **Chỉ áp dụng cho Steam** (mặc định) — bỏ chọn để áp dụng cho mọi trang web.
-- **Tự bật cùng Windows** — chạy ngầm dưới dạng dịch vụ, không cần mở app.
-- **Chế độ mạnh** (`-5`) dự phòng khi chế độ nhẹ không đủ.
-- **Cập nhật GoodbyeDPI** trực tiếp từ GitHub (bản phát hành mới nhất của ValdikSS/GoodbyeDPI).
+- **Chọn app được mở khoá**: Steam (mặc định), Epic Games, Discord, Battle.net, EA app, Ubisoft Connect, GOG Galaxy, Riot — hoặc mọi trang web. Có thể thêm trang web riêng.
+- **Thu nhỏ xuống khay** (cạnh đồng hồ): biểu tượng mũ hồng khi đang bật, xám khi tắt; nhấn chuột phải để bật/tắt nhanh.
+- **Tự bật khi mở máy** — chạy ngầm dưới dạng dịch vụ và hiện biểu tượng ở khay.
+- **Chế độ mạnh** (`-5`) dự phòng khi chế độ thường không đủ.
+- **Tự cập nhật**: cả app Siêu Nhân Hồng (từ Releases của repo này) lẫn GoodbyeDPI (từ ValdikSS/GoodbyeDPI).
 - **Kiểm tra kết nối** tới Cửa hàng, Cộng đồng, Đăng nhập và máy chủ cập nhật game của Steam.
-- Sửa danh sách tên miền, đưa DNS về mặc định.
 
 ## Yêu cầu máy
 - Windows 10 hoặc 11 bản 64-bit.
@@ -24,7 +27,7 @@ Bên dưới dùng [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI): **khôn
 2. Bấm nút **BIẾN HÌNH**. Lần đầu app tự giải nén GoodbyeDPI vào `C:\GoodbyeDPI`.
 3. Mở Steam.
 
-Gỡ bỏ: tắt nút trong app (tự gỡ dịch vụ), rồi xoá thư mục `C:\GoodbyeDPI`.
+Gỡ bỏ: tắt nút trong app (tự gỡ chế độ tự bật), rồi xoá thư mục `C:\GoodbyeDPI`.
 
 ## Build từ mã nguồn
 Không cần IDE — chỉ cần .NET Framework 4.x có sẵn trong Windows:
@@ -32,6 +35,17 @@ Không cần IDE — chỉ cần .NET Framework 4.x có sẵn trong Windows:
 ```bat
 build.bat
 ```
+
+## Phát hành bản mới
+1. Tăng `AssemblyVersion` trong `SieuNhanHong.cs` (ví dụ `4.2.0.0`).
+2. Commit, rồi tạo tag cùng số phiên bản và push:
+
+```bat
+git tag v4.2.0
+git push origin main v4.2.0
+```
+
+GitHub Actions tự build `SieuNhanHong.exe` và đăng lên Releases. App của người dùng sẽ thấy bản mới và cập nhật bằng một nút bấm.
 
 ## Lưu ý
 - GoodbyeDPI dùng driver WinDivert nên một số phần mềm diệt virus có thể báo nhầm.

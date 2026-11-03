@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -18,6 +17,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
@@ -33,17 +33,57 @@ using Microsoft.Win32;
 [assembly: AssemblyCompany("Newwyn Team")]
 [assembly: AssemblyProduct("Siêu Nhân Hồng")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("4.0.0.0")]
-[assembly: AssemblyFileVersion("4.0.0.0")]
+[assembly: AssemblyVersion("4.1.0.0")]
+[assembly: AssemblyFileVersion("4.1.0.0")]
 
 namespace SieuNhanHong
 {
+    // ============================================================
+    // App presets: GoodbyeDPI filters by domain, so each "app" is its list of domains
+    // ============================================================
+    public class AppPreset
+    {
+        public string Id, Name, Glyph;
+        public string[] Domains;
+
+        public AppPreset(string id, string name, string glyph, params string[] domains)
+        {
+            Id = id; Name = name; Glyph = glyph; Domains = domains;
+        }
+
+        public static readonly AppPreset[] All = new[]
+        {
+            new AppPreset("steam", "Steam", "\uE7FC",
+                "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com",
+                "steamserver.net", "steamusercontent.com", "steamgames.com", "steam-chat.com",
+                "steamdeck.com", "s.team", "valvesoftware.com",
+                "steamcdn-a.akamaihd.net", "steamstore-a.akamaihd.net",
+                "steamcommunity-a.akamaihd.net", "steamuserimages-a.akamaihd.net",
+                "cdn.akamai.steamstatic.com"),
+            new AppPreset("epic", "Epic Games", "\uE7FC",
+                "epicgames.com", "epicgames.dev", "epicgames.net", "unrealengine.com", "fortnite.com"),
+            new AppPreset("discord", "Discord", "\uE8BD",
+                "discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discord.media"),
+            new AppPreset("battlenet", "Battle.net", "\uE7FC",
+                "battle.net", "blizzard.com", "battlenet.com"),
+            new AppPreset("ea", "EA app", "\uE7FC",
+                "ea.com", "origin.com", "tnt-ea.com"),
+            new AppPreset("ubisoft", "Ubisoft Connect", "\uE7FC",
+                "ubisoft.com", "ubi.com", "ubisoftconnect.com"),
+            new AppPreset("gog", "GOG Galaxy", "\uE7FC",
+                "gog.com", "gog-statics.com"),
+            new AppPreset("riot", "Riot (LMHT, Valorant)", "\uE7FC",
+                "riotgames.com", "leagueoflegends.com", "playvalorant.com", "riotcdn.net")
+        };
+    }
+
     // ============================================================
     // Settings saved next to GoodbyeDPI (C:\GoodbyeDPI\sieunhanhong.ini)
     // ============================================================
     public class AppSettings
     {
-        public bool SteamOnly = true;
+        public bool AllSites = false;
+        public HashSet<string> Apps = new HashSet<string> { "steam" };
         public bool AutoStart = false;
         public bool StrongMode = false;
 
@@ -57,10 +97,15 @@ namespace SieuNhanHong
                 {
                     var parts = line.Split(new[] { '=' }, 2);
                     if (parts.Length != 2) continue;
-                    bool v = parts[1].Trim() == "1";
+                    string val = parts[1].Trim();
+                    bool v = val == "1";
                     switch (parts[0].Trim())
                     {
-                        case "SteamOnly": s.SteamOnly = v; break;
+                        case "SteamOnly": s.AllSites = !v; break; // v4.0 setting
+                        case "AllSites": s.AllSites = v; break;
+                        case "Apps":
+                            s.Apps = new HashSet<string>(val.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
+                            break;
                         case "AutoStart": s.AutoStart = v; break;
                         case "StrongMode": s.StrongMode = v; break;
                     }
@@ -76,10 +121,20 @@ namespace SieuNhanHong
             {
                 Directory.CreateDirectory(Gdpi.Root);
                 File.WriteAllText(Gdpi.SettingsPath, string.Format(
-                    "SteamOnly={0}\r\nAutoStart={1}\r\nStrongMode={2}\r\n",
-                    SteamOnly ? 1 : 0, AutoStart ? 1 : 0, StrongMode ? 1 : 0));
+                    "AllSites={0}\r\nApps={1}\r\nAutoStart={2}\r\nStrongMode={3}\r\n",
+                    AllSites ? 1 : 0, string.Join(",", Apps.ToArray()), AutoStart ? 1 : 0, StrongMode ? 1 : 0));
             }
             catch { }
+        }
+
+        public string ScopeText()
+        {
+            if (AllSites) return "Mọi trang web";
+            var names = AppPreset.All.Where(p => Apps.Contains(p.Id)).Select(p => p.Name.Split(' ')[0]).ToList();
+            bool custom = Gdpi.ReadCustomDomains().Count > 0;
+            if (names.Count == 0) return custom ? "Trang web riêng" : "Chưa chọn app";
+            if (names.Count > 2) return names[0] + " + " + (names.Count - 1) + " app";
+            return string.Join(", ", names.ToArray());
         }
     }
 
@@ -90,24 +145,17 @@ namespace SieuNhanHong
     {
         public const string BundledVersion = "0.2.2";
         public const string ServiceName = "GoodbyeDPI";
+        public const string TrayTaskName = "SieuNhanHong";
         public const string RepoApi = "https://api.github.com/repos/ValdikSS/GoodbyeDPI/releases/latest";
 
         public static readonly string Root = @"C:\GoodbyeDPI";
         public static readonly string BinDir = System.IO.Path.Combine(Root, "x86_64");
         public static readonly string ExePath = System.IO.Path.Combine(BinDir, "goodbyedpi.exe");
-        public static readonly string BlacklistPath = System.IO.Path.Combine(Root, "steam-blacklist.txt");
+        public static readonly string BlacklistPath = System.IO.Path.Combine(Root, "blacklist.txt");
+        public static readonly string CustomPath = System.IO.Path.Combine(Root, "custom-domains.txt");
+        public static readonly string OldSteamListPath = System.IO.Path.Combine(Root, "steam-blacklist.txt");
         public static readonly string VersionPath = System.IO.Path.Combine(Root, "version.txt");
         public static readonly string SettingsPath = System.IO.Path.Combine(Root, "sieunhanhong.ini");
-
-        public static readonly string[] DefaultSteamDomains = new[]
-        {
-            "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com",
-            "steamserver.net", "steamusercontent.com", "steamgames.com", "steam-chat.com",
-            "steamdeck.com", "s.team", "valvesoftware.com",
-            "steamcdn-a.akamaihd.net", "steamstore-a.akamaihd.net",
-            "steamcommunity-a.akamaihd.net", "steamuserimages-a.akamaihd.net",
-            "cdn.akamai.steamstatic.com"
-        };
 
         // Extract the bundled GoodbyeDPI build if nothing is installed yet
         public static void EnsureInstalled(Action<string> log)
@@ -124,17 +172,29 @@ namespace SieuNhanHong
                 foreach (var lic in new[] { "LICENSE-goodbyedpi.txt", "LICENSE-windivert.txt", "LICENSE-getline.txt", "LICENSE-uthash.txt" })
                     ExtractResource("gdpi." + lic, System.IO.Path.Combine(licDir, lic));
                 File.WriteAllText(VersionPath, BundledVersion);
-                log("   -> Cài đặt xong.");
+                log("   -> Xong.");
             }
             else if (!File.Exists(VersionPath))
             {
                 File.WriteAllText(VersionPath, BundledVersion);
             }
 
-            if (!File.Exists(BlacklistPath))
+            if (!File.Exists(CustomPath))
             {
-                File.WriteAllLines(BlacklistPath, DefaultSteamDomains);
-                log("Đã tạo danh sách trang web Steam: " + BlacklistPath);
+                var lines = new List<string>
+                {
+                    "# Thêm trang web riêng, mỗi dòng một tên miền (ví dụ: example.com).",
+                    "# Dòng bắt đầu bằng # sẽ được bỏ qua.",
+                    ""
+                };
+                // Carry over domains the user added to the v4.0 Steam list
+                if (File.Exists(OldSteamListPath))
+                {
+                    var steam = AppPreset.All[0].Domains;
+                    lines.AddRange(File.ReadAllLines(OldSteamListPath).Select(x => x.Trim())
+                        .Where(x => x.Length > 0 && !steam.Contains(x)));
+                }
+                File.WriteAllLines(CustomPath, lines, new UTF8Encoding(false));
             }
         }
 
@@ -153,10 +213,30 @@ namespace SieuNhanHong
             catch { return "?"; }
         }
 
+        public static List<string> ReadCustomDomains()
+        {
+            try
+            {
+                if (!File.Exists(CustomPath)) return new List<string>();
+                return File.ReadAllLines(CustomPath).Select(x => x.Trim())
+                    .Where(x => x.Length > 0 && !x.StartsWith("#")).ToList();
+            }
+            catch { return new List<string>(); }
+        }
+
+        // Writes the combined domain list for the selected apps; returns how many domains it holds
+        public static int WriteBlacklist(AppSettings s)
+        {
+            var domains = AppPreset.All.Where(p => s.Apps.Contains(p.Id)).SelectMany(p => p.Domains)
+                .Concat(ReadCustomDomains()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            File.WriteAllLines(BlacklistPath, domains);
+            return domains.Count;
+        }
+
         public static string BuildArgs(AppSettings s)
         {
             string args = s.StrongMode ? "-5" : "-e 1 --native-frag --max-payload";
-            if (s.SteamOnly) args += " --blacklist \"" + BlacklistPath + "\"";
+            if (!s.AllSites) args += " --blacklist \"" + BlacklistPath + "\"";
             return args;
         }
 
@@ -172,14 +252,15 @@ namespace SieuNhanHong
             catch { return false; }
         }
 
-        public static void StopAll(Action<string> log, bool removeService)
+        public static void StopAll(Action<string> log, bool removeAutoStart)
         {
             if (ServiceExists())
             {
                 RunCapture("sc.exe", "stop " + ServiceName);
-                if (removeService)
+                if (removeAutoStart)
                 {
                     RunCapture("sc.exe", "delete " + ServiceName);
+                    RunCapture("schtasks.exe", "/Delete /TN " + TrayTaskName + " /F");
                     log("   -> Đã tắt tự bật khi mở máy.");
                 }
             }
@@ -192,9 +273,14 @@ namespace SieuNhanHong
 
         public static bool Start(AppSettings s, Action<string> log)
         {
+            if (!s.AllSites && WriteBlacklist(s) == 0)
+            {
+                log("Chưa chọn app nào. Bấm \"Chọn app\" để chọn ít nhất một app.");
+                return false;
+            }
+
             StopAll(log, true);
             string args = BuildArgs(s);
-            
 
             if (s.AutoStart)
             {
@@ -208,6 +294,10 @@ namespace SieuNhanHong
                 }
                 RunCapture("sc.exe", "description " + ServiceName + " \"Mở khoá Steam - quản lý bởi Siêu Nhân Hồng\"");
                 RunCapture("sc.exe", "start " + ServiceName, out output);
+
+                // Bring the tray icon back after each sign-in (highest privileges, so no UAC prompt)
+                RunCapture("schtasks.exe", "/Create /TN " + TrayTaskName + " /TR \"\\\"" + Program.AppExePath +
+                    "\\\" --tray\" /SC ONLOGON /RL HIGHEST /F");
                 log("   -> Đã bật chế độ tự bật khi mở máy.");
             }
             else
@@ -226,12 +316,12 @@ namespace SieuNhanHong
             return IsRunning();
         }
 
-        // ---------------- GitHub update ----------------
-        public class ReleaseInfo { public string Tag; public string ZipUrl; }
+        // ---------------- GitHub releases ----------------
+        public class ReleaseInfo { public string Tag; public string ZipUrl; public string ExeUrl; }
 
-        public static ReleaseInfo FetchLatest()
+        public static ReleaseInfo FetchLatest(string apiUrl)
         {
-            var req = (HttpWebRequest)WebRequest.Create(RepoApi);
+            var req = (HttpWebRequest)WebRequest.Create(apiUrl);
             req.UserAgent = "SieuNhanHong-Updater";
             req.Accept = "application/vnd.github+json";
             req.Timeout = 15000;
@@ -240,8 +330,7 @@ namespace SieuNhanHong
             using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
                 json = sr.ReadToEnd();
 
-            var ser = new JavaScriptSerializer();
-            var root = (Dictionary<string, object>)ser.DeserializeObject(json);
+            var root = (Dictionary<string, object>)new JavaScriptSerializer().DeserializeObject(json);
             var info = new ReleaseInfo { Tag = Convert.ToString(root["tag_name"]) };
             var assets = root["assets"] as object[];
             if (assets != null)
@@ -250,11 +339,9 @@ namespace SieuNhanHong
                 {
                     var d = (Dictionary<string, object>)a;
                     string name = Convert.ToString(d["name"]);
-                    if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        info.ZipUrl = Convert.ToString(d["browser_download_url"]);
-                        break;
-                    }
+                    string url = Convert.ToString(d["browser_download_url"]);
+                    if (info.ZipUrl == null && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) info.ZipUrl = url;
+                    if (info.ExeUrl == null && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) info.ExeUrl = url;
                 }
             }
             return info;
@@ -281,7 +368,7 @@ namespace SieuNhanHong
             Directory.CreateDirectory(tmp);
             string zip = System.IO.Path.Combine(tmp, "goodbyedpi.zip");
 
-            log("Đang tải bản mới " + rel.Tag + " từ GitHub...");
+            log("Đang tải GoodbyeDPI " + rel.Tag + " từ GitHub...");
             using (var wc = new WebClient())
             {
                 wc.Headers[HttpRequestHeader.UserAgent] = "SieuNhanHong-Updater";
@@ -316,7 +403,7 @@ namespace SieuNhanHong
 
             File.WriteAllText(VersionPath, rel.Tag.TrimStart('v', 'V'));
             try { Directory.Delete(tmp, true); } catch { }
-            log("   -> Đã cập nhật lên bản " + rel.Tag + ".");
+            log("   -> Đã cập nhật GoodbyeDPI lên bản " + rel.Tag + ".");
         }
 
         // ---------------- helpers ----------------
@@ -354,12 +441,77 @@ namespace SieuNhanHong
     }
 
     // ============================================================
+    // Self-update of Siêu Nhân Hồng from its own GitHub releases
+    // ============================================================
+    public static class AppUpdater
+    {
+        public const string RepoApi = "https://api.github.com/repos/gentapham/goodbyedpi_sieunhanhong/releases/latest";
+
+        public static string CurrentVersion
+        {
+            get { return Assembly.GetExecutingAssembly().GetName().Version.ToString(3); }
+        }
+
+        // Downloads the new exe and swaps it in; the caller restarts the app afterwards
+        public static void Install(Gdpi.ReleaseInfo rel, Action<string> log)
+        {
+            string exe = Program.AppExePath;
+            string newPath = exe + ".new";
+            string oldPath = exe + ".old";
+
+            log("Đang tải Siêu Nhân Hồng " + rel.Tag + " từ GitHub...");
+            using (var wc = new WebClient())
+            {
+                wc.Headers[HttpRequestHeader.UserAgent] = "SieuNhanHong-Updater";
+                wc.DownloadFile(rel.ExeUrl, newPath);
+            }
+
+            var bytes = File.ReadAllBytes(newPath);
+            if (bytes.Length < 100000 || bytes[0] != 'M' || bytes[1] != 'Z')
+            {
+                File.Delete(newPath);
+                throw new Exception("File tải về bị lỗi, hãy thử lại sau.");
+            }
+
+            if (File.Exists(oldPath)) File.Delete(oldPath);
+            File.Move(exe, oldPath);
+            try
+            {
+                File.Move(newPath, exe);
+            }
+            catch
+            {
+                File.Move(oldPath, exe);
+                throw;
+            }
+            log("   -> Đã tải xong, đang mở lại app...");
+        }
+
+        public static void CleanupOldExe()
+        {
+            string oldPath = Program.AppExePath + ".old";
+            for (int i = 0; i < 10 && File.Exists(oldPath); i++)
+            {
+                try { File.Delete(oldPath); } catch { Thread.Sleep(1000); }
+            }
+        }
+    }
+
+    // ============================================================
     // App
     // ============================================================
     public class Program
     {
         [DllImport("dnsapi.dll", EntryPoint = "DnsFlushResolverCache")]
         public static extern int DnsFlushResolverCache();
+
+        public const string DotNetDownloadUrl = "https://dotnet.microsoft.com/download/dotnet-framework/net48";
+        public const string SteamDownloadUrl = "https://store.steampowered.com/about/";
+        private const string InstanceName = "SieuNhanHong_SingleInstance";
+        private const string ShowEventName = "SieuNhanHong_ShowWindow";
+
+        public static readonly string AppExePath = Process.GetCurrentProcess().MainModule.FileName;
+        private static Mutex instanceLock;
 
         [STAThread]
         public static void Main(string[] args)
@@ -373,9 +525,14 @@ namespace SieuNhanHong
                 ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
             }
 
-            string screenshotPath = null;
+            string screenshotPath = null, appsShotPath = null;
+            bool startInTray = args.Contains("--tray");
             for (int i = 0; i < args.Length - 1; i++)
+            {
                 if (args[i] == "--screenshot") screenshotPath = args[i + 1];
+                if (args[i] == "--shot-apps") appsShotPath = args[i + 1];
+            }
+            bool previewMode = screenshotPath != null || appsShotPath != null;
 
             if (!CheckRequirements()) return;
 
@@ -383,7 +540,7 @@ namespace SieuNhanHong
             {
                 try
                 {
-                    var proc = new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName)
+                    var proc = new ProcessStartInfo(AppExePath, startInTray ? "--tray" : "")
                     {
                         UseShellExecute = true,
                         WorkingDirectory = Environment.CurrentDirectory,
@@ -399,13 +556,45 @@ namespace SieuNhanHong
                 return;
             }
 
-            var app = new Application();
-            var window = new MainWindow(screenshotPath).Build();
-            app.Run(window);
+            // Only one copy at a time: a second launch just brings the first window back
+            EventWaitHandle showEvent = null;
+            if (!previewMode)
+            {
+                bool createdNew;
+                instanceLock = new Mutex(false, InstanceName, out createdNew);
+                if (!createdNew)
+                {
+                    try { EventWaitHandle.OpenExisting(ShowEventName).Set(); } catch { }
+                    return;
+                }
+                showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            }
+
+            Task.Factory.StartNew(AppUpdater.CleanupOldExe);
+
+            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            var main = new MainWindow(screenshotPath, appsShotPath);
+            var window = main.Build();
+            if (!startInTray) window.Show();
+            main.Init(startInTray);
+
+            if (showEvent != null)
+            {
+                var listener = new Thread(() =>
+                {
+                    while (showEvent.WaitOne())
+                        window.Dispatcher.BeginInvoke(new Action(main.ShowFromTray));
+                }) { IsBackground = true };
+                listener.Start();
+            }
+
+            app.Run();
         }
 
-        public const string DotNetDownloadUrl = "https://dotnet.microsoft.com/download/dotnet-framework/net48";
-        public const string SteamDownloadUrl = "https://store.steampowered.com/about/";
+        public static void ReleaseInstanceLock()
+        {
+            if (instanceLock != null) { instanceLock.Close(); instanceLock = null; }
+        }
 
         // Show a friendly message (and offer the official download page) when the PC is missing something
         private static bool CheckRequirements()
@@ -474,22 +663,12 @@ namespace SieuNhanHong
         }
     }
 
-    public class MainWindow
+    // ============================================================
+    // Shared XAML styles (pink helmet theme)
+    // ============================================================
+    public static class Theme
     {
-        private const string Xaml = @"
-<Window xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
-        xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-        Title='Siêu Nhân Hồng - Mở khoá Steam'
-        Width='1120' Height='720'
-        WindowStartupLocation='CenterScreen'
-        WindowStyle='None' AllowsTransparency='True' Background='Transparent'
-        ResizeMode='CanMinimize'
-        FontFamily='Segoe UI Variable Text, Segoe UI'
-        FontSize='15'
-        TextOptions.TextFormattingMode='Ideal'
-        UseLayoutRounding='True' SnapsToDevicePixels='True'>
-
-    <Window.Resources>
+        public const string Resources = @"
         <SolidColorBrush x:Key='Pink' Color='#EE2D9F'/>
         <SolidColorBrush x:Key='PinkSoft' Color='#FF7AC8'/>
         <SolidColorBrush x:Key='Card' Color='#1F1119'/>
@@ -501,6 +680,11 @@ namespace SieuNhanHong
             <GradientStop Color='#FF5BBE' Offset='0'/>
             <GradientStop Color='#EE2D9F' Offset='0.5'/>
             <GradientStop Color='#B8137A' Offset='1'/>
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key='WindowBg' StartPoint='0,0' EndPoint='1,1'>
+            <GradientStop Color='#1D0E18' Offset='0'/>
+            <GradientStop Color='#140A11' Offset='0.55'/>
+            <GradientStop Color='#100810' Offset='1'/>
         </LinearGradientBrush>
 
         <Style TargetType='TextBlock'>
@@ -648,17 +832,205 @@ namespace SieuNhanHong
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-        </Style>
-    </Window.Resources>
+        </Style>";
 
-    <Border CornerRadius='20' BorderBrush='#EE2D9F' BorderThickness='1.5' Margin='10'>
-        <Border.Background>
-            <LinearGradientBrush StartPoint='0,0' EndPoint='1,1'>
-                <GradientStop Color='#1D0E18' Offset='0'/>
-                <GradientStop Color='#140A11' Offset='0.55'/>
-                <GradientStop Color='#100810' Offset='1'/>
-            </LinearGradientBrush>
-        </Border.Background>
+        public static Window Parse(string xaml)
+        {
+            return (Window)XamlReader.Parse(xaml.Replace("%%RESOURCES%%", Resources));
+        }
+    }
+
+    // ============================================================
+    // "Chọn app" dialog
+    // ============================================================
+    public class AppPickerWindow
+    {
+        private const string Xaml = @"
+<Window xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+        xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+        Title='Chọn app' Width='700' SizeToContent='Height'
+        WindowStartupLocation='CenterOwner' ShowInTaskbar='False'
+        WindowStyle='None' AllowsTransparency='True' Background='Transparent' ResizeMode='NoResize'
+        FontFamily='Segoe UI Variable Text, Segoe UI' FontSize='15'
+        TextOptions.TextFormattingMode='Ideal' UseLayoutRounding='True'>
+    <Window.Resources>%%RESOURCES%%</Window.Resources>
+    <Border CornerRadius='20' BorderBrush='#EE2D9F' BorderThickness='1.5' Margin='10' Padding='22,16,22,22' Background='{StaticResource WindowBg}'>
+        <Border.Effect>
+            <DropShadowEffect Color='#EE2D9F' BlurRadius='14' ShadowDepth='0' Opacity='0.45'/>
+        </Border.Effect>
+        <StackPanel>
+            <Grid Name='bdDlgTitle' Background='Transparent' Margin='0,0,0,4'>
+                <TextBlock Text='CHỌN APP ĐƯỢC MỞ KHOÁ' Style='{StaticResource CardTitle}' FontSize='18' Margin='2,6,0,6'/>
+                <Button Name='btnDlgClose' Style='{StaticResource WinBtn}' HorizontalAlignment='Right'>
+                    <TextBlock Style='{StaticResource Icon}' Text='&#xE8BB;' FontSize='11' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
+                </Button>
+            </Grid>
+            <TextBlock Text='Bật app nào thì Siêu Nhân Hồng giúp app đó vào mạng bình thường. Các app khác không bị ảnh hưởng.'
+                       Foreground='{StaticResource Muted}' FontSize='14' TextWrapping='Wrap' Margin='2,0,0,14'/>
+
+            <Border Background='#33152A' BorderBrush='#5A2547' BorderThickness='1' CornerRadius='14' Padding='16,12' Margin='0,0,0,12'>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width='36'/>
+                        <ColumnDefinition Width='*'/>
+                        <ColumnDefinition Width='Auto'/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style='{StaticResource Icon}' Text='&#xE774;' FontSize='20' Foreground='#FF7AC8'/>
+                    <StackPanel Grid.Column='1'>
+                        <TextBlock Text='Mọi trang web và app' FontWeight='SemiBold'/>
+                        <TextBlock Text='Áp dụng cho tất cả, kể cả trình duyệt web' Foreground='{StaticResource Muted}' FontSize='13'/>
+                    </StackPanel>
+                    <CheckBox Grid.Column='2' Name='chkAll' Style='{StaticResource Switch}'/>
+                </Grid>
+            </Border>
+
+            <UniformGrid Name='pnlApps' Columns='2'/>
+
+            <Grid Margin='0,8,0,0'>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width='*'/>
+                    <ColumnDefinition Width='12'/>
+                    <ColumnDefinition Width='180'/>
+                </Grid.ColumnDefinitions>
+                <Button Name='btnCustom' Style='{StaticResource GhostBtn}'>
+                    <StackPanel Orientation='Horizontal'>
+                        <TextBlock Style='{StaticResource Icon}' Text='&#xE710;' FontSize='15' Foreground='#FF7AC8' Margin='0,0,8,0'/>
+                        <TextBlock Name='txtCustomBtn' Text='Thêm trang web khác'/>
+                    </StackPanel>
+                </Button>
+                <Button Grid.Column='2' Name='btnDone' Style='{StaticResource PinkBtn}'>
+                    <TextBlock Text='Xong' Foreground='White'/>
+                </Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>";
+
+        private readonly AppSettings settings;
+        private readonly Dictionary<string, CheckBox> boxes = new Dictionary<string, CheckBox>();
+        private Window win;
+        private CheckBox chkAll;
+
+        public AppPickerWindow(AppSettings settings)
+        {
+            this.settings = settings;
+        }
+
+        public Window Build(Window owner)
+        {
+            win = Theme.Parse(Xaml);
+            if (owner != null && owner.IsVisible) win.Owner = owner;
+            else win.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+            ((Grid)win.FindName("bdDlgTitle")).MouseLeftButtonDown += (s, e) => win.DragMove();
+            ((Button)win.FindName("btnDlgClose")).Click += (s, e) => win.Close();
+            ((Button)win.FindName("btnDone")).Click += (s, e) => { Apply(); win.DialogResult = true; };
+            ((Button)win.FindName("btnCustom")).Click += (s, e) => OpenCustomList();
+
+            chkAll = (CheckBox)win.FindName("chkAll");
+            chkAll.IsChecked = settings.AllSites;
+            chkAll.Checked += (s, e) => UpdateEnabled();
+            chkAll.Unchecked += (s, e) => UpdateEnabled();
+
+            var panel = (UniformGrid)win.FindName("pnlApps");
+            foreach (var p in AppPreset.All)
+            {
+                var bd = new Border
+                {
+                    Background = (Brush)win.FindResource("Row"),
+                    CornerRadius = new CornerRadius(14),
+                    Padding = new Thickness(14, 10, 12, 10),
+                    Margin = new Thickness(0, 0, 8, 8)
+                };
+                var g = new Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var icon = new TextBlock { Text = p.Glyph, FontSize = 17, Foreground = (Brush)win.FindResource("PinkSoft"), Style = (Style)win.FindResource("Icon") };
+                var names = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
+                names.Children.Add(new TextBlock { Text = p.Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+                names.Children.Add(new TextBlock
+                {
+                    Text = string.Join(", ", p.Domains.Take(2).ToArray()) + (p.Domains.Length > 2 ? ", ..." : ""),
+                    FontSize = 12,
+                    Foreground = (Brush)win.FindResource("Muted"),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+                var cb = new CheckBox { Style = (Style)win.FindResource("Switch"), IsChecked = settings.Apps.Contains(p.Id) };
+
+                Grid.SetColumn(names, 1);
+                Grid.SetColumn(cb, 2);
+                g.Children.Add(icon);
+                g.Children.Add(names);
+                g.Children.Add(cb);
+                bd.Child = g;
+                panel.Children.Add(bd);
+                boxes[p.Id] = cb;
+            }
+
+            UpdateCustomCount();
+            UpdateEnabled();
+            return win;
+        }
+
+        private void UpdateEnabled()
+        {
+            var panel = (UIElement)win.FindName("pnlApps");
+            bool all = chkAll.IsChecked == true;
+            panel.IsEnabled = !all;
+            panel.Opacity = all ? 0.45 : 1;
+        }
+
+        private void UpdateCustomCount()
+        {
+            int n = Gdpi.ReadCustomDomains().Count;
+            ((TextBlock)win.FindName("txtCustomBtn")).Text = n > 0 ? "Trang web riêng (" + n + ")" : "Thêm trang web khác";
+        }
+
+        private void OpenCustomList()
+        {
+            try
+            {
+                Gdpi.EnsureInstalled(_ => { });
+                var p = Process.Start("notepad.exe", "\"" + Gdpi.CustomPath + "\"");
+                if (p != null)
+                {
+                    p.EnableRaisingEvents = true;
+                    p.Exited += (s, e) => win.Dispatcher.BeginInvoke(new Action(UpdateCustomCount));
+                }
+            }
+            catch { }
+        }
+
+        private void Apply()
+        {
+            settings.AllSites = chkAll.IsChecked == true;
+            settings.Apps = new HashSet<string>(boxes.Where(kv => kv.Value.IsChecked == true).Select(kv => kv.Key));
+        }
+    }
+
+    // ============================================================
+    // Main window
+    // ============================================================
+    public class MainWindow
+    {
+        private const string Xaml = @"
+<Window xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+        xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+        Title='Siêu Nhân Hồng - Mở khoá Steam'
+        Width='1120' Height='720'
+        WindowStartupLocation='CenterScreen'
+        WindowStyle='None' AllowsTransparency='True' Background='Transparent'
+        ResizeMode='CanMinimize'
+        FontFamily='Segoe UI Variable Text, Segoe UI'
+        FontSize='15'
+        TextOptions.TextFormattingMode='Ideal'
+        UseLayoutRounding='True' SnapsToDevicePixels='True'>
+
+    <Window.Resources>%%RESOURCES%%</Window.Resources>
+
+    <Border CornerRadius='20' BorderBrush='#EE2D9F' BorderThickness='1.5' Margin='10' Background='{StaticResource WindowBg}'>
         <Border.Effect>
             <DropShadowEffect Color='#EE2D9F' BlurRadius='14' ShadowDepth='0' Opacity='0.45'/>
         </Border.Effect>
@@ -678,13 +1050,13 @@ namespace SieuNhanHong
                         <Ellipse.Effect><DropShadowEffect Color='#EE2D9F' BlurRadius='8' ShadowDepth='0'/></Ellipse.Effect>
                     </Ellipse>
                     <TextBlock Text='SIÊU NHÂN HỒNG' Foreground='#FF7AC8' FontWeight='Bold' FontSize='13'/>
-                    <TextBlock Text='  ·  v4.0' Foreground='#8D6F82' FontSize='13'/>
+                    <TextBlock Name='txtTitleVer' Text='' Foreground='#8D6F82' FontSize='13'/>
                 </StackPanel>
                 <StackPanel Orientation='Horizontal' HorizontalAlignment='Right' VerticalAlignment='Center'>
-                    <Button Name='btnMinimize' Style='{StaticResource WinBtn}'>
+                    <Button Name='btnMinimize' Style='{StaticResource WinBtn}' ToolTip='Thu nhỏ xuống khay (cạnh đồng hồ)'>
                         <TextBlock Style='{StaticResource Icon}' Text='&#xE921;' FontSize='11' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
                     </Button>
-                    <Button Name='btnClose' Style='{StaticResource WinBtn}' Margin='4,0,0,0'>
+                    <Button Name='btnClose' Style='{StaticResource WinBtn}' Margin='4,0,0,0' ToolTip='Thoát app'>
                         <TextBlock Style='{StaticResource Icon}' Text='&#xE8BB;' FontSize='11' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
                     </Button>
                 </StackPanel>
@@ -784,10 +1156,12 @@ namespace SieuNhanHong
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Style='{StaticResource Icon}' Text='&#xE7FC;' FontSize='20' Foreground='#FF7AC8'/>
                                 <StackPanel Grid.Column='1' Margin='0,0,10,0'>
-                                    <TextBlock Text='Chỉ dùng cho Steam' FontWeight='SemiBold' FontSize='15'/>
-                                    <TextBlock Name='txtSteamOnlyHint' Text='Tắt để dùng cho mọi trang web' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
+                                    <TextBlock Text='Áp dụng cho' FontWeight='SemiBold' FontSize='15'/>
+                                    <TextBlock Name='txtScope' Text='Steam' Foreground='{StaticResource Muted}' FontSize='13' TextTrimming='CharacterEllipsis'/>
                                 </StackPanel>
-                                <CheckBox Grid.Column='2' Name='chkSteamOnly' Style='{StaticResource Switch}' IsChecked='True'/>
+                                <Button Grid.Column='2' Name='btnPickApps' Style='{StaticResource GhostBtn}' Height='32' FontSize='13'>
+                                    <TextBlock Text='Chọn app' Margin='2,0'/>
+                                </Button>
                             </Grid>
                             <Grid Margin='0,0,0,12'>
                                 <Grid.ColumnDefinitions>
@@ -798,7 +1172,7 @@ namespace SieuNhanHong
                                 <TextBlock Style='{StaticResource Icon}' Text='&#xE7E8;' FontSize='20' Foreground='#FF7AC8'/>
                                 <StackPanel Grid.Column='1' Margin='0,0,10,0'>
                                     <TextBlock Text='Tự bật khi mở máy' FontWeight='SemiBold' FontSize='15'/>
-                                    <TextBlock Text='Không cần mở app mỗi lần bật máy' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
+                                    <TextBlock Text='Chạy ngầm, hiện biểu tượng ở khay' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
                                 </StackPanel>
                                 <CheckBox Grid.Column='2' Name='chkAutoStart' Style='{StaticResource Switch}'/>
                             </Grid>
@@ -818,7 +1192,7 @@ namespace SieuNhanHong
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row='2' Background='{StaticResource Card}' BorderBrush='{StaticResource CardLine}' BorderThickness='1' CornerRadius='18' Padding='18,16'>
+                    <Border Grid.Row='2' Background='{StaticResource Card}' BorderBrush='{StaticResource CardLine}' BorderThickness='1' CornerRadius='18' Padding='18,14'>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height='Auto'/>
@@ -826,26 +1200,30 @@ namespace SieuNhanHong
                                 <RowDefinition Height='*'/>
                                 <RowDefinition Height='Auto'/>
                             </Grid.RowDefinitions>
-                            <TextBlock Style='{StaticResource CardTitle}' Text='PHIÊN BẢN CÔNG CỤ'/>
+                            <TextBlock Style='{StaticResource CardTitle}' Text='PHIÊN BẢN' Margin='2,0,0,6'/>
                             <Grid Grid.Row='1'>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width='*'/>
-                                    <ColumnDefinition Width='*'/>
+                                    <ColumnDefinition Width='78'/>
+                                    <ColumnDefinition Width='78'/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text='Máy bạn đang có' Foreground='{StaticResource Muted}' FontSize='13'/>
-                                    <TextBlock Name='txtVerInstalled' Text='...' FontSize='22' FontWeight='Bold'/>
-                                </StackPanel>
-                                <StackPanel Grid.Column='1'>
-                                    <TextBlock Text='Bản mới nhất' Foreground='{StaticResource Muted}' FontSize='13'/>
-                                    <TextBlock Name='txtVerLatest' Text='...' FontSize='22' FontWeight='Bold' Foreground='#FF7AC8'/>
-                                </StackPanel>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height='Auto'/>
+                                    <RowDefinition Height='Auto'/>
+                                    <RowDefinition Height='Auto'/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Column='1' Text='Đang có' Foreground='{StaticResource Muted}' FontSize='12'/>
+                                <TextBlock Grid.Column='2' Text='Mới nhất' Foreground='{StaticResource Muted}' FontSize='12'/>
+                                <TextBlock Grid.Row='1' Text='Siêu Nhân Hồng' FontSize='15' FontWeight='SemiBold' VerticalAlignment='Center'/>
+                                <TextBlock Grid.Row='1' Grid.Column='1' Name='txtAppVer' Text='...' FontSize='17' FontWeight='Bold'/>
+                                <TextBlock Grid.Row='1' Grid.Column='2' Name='txtAppLatest' Text='...' FontSize='17' FontWeight='Bold' Foreground='#FF7AC8'/>
+                                <TextBlock Grid.Row='2' Text='Công cụ GoodbyeDPI' FontSize='15' FontWeight='SemiBold' VerticalAlignment='Center'/>
+                                <TextBlock Grid.Row='2' Grid.Column='1' Name='txtVerInstalled' Text='...' FontSize='17' FontWeight='Bold'/>
+                                <TextBlock Grid.Row='2' Grid.Column='2' Name='txtVerLatest' Text='...' FontSize='17' FontWeight='Bold' Foreground='#FF7AC8'/>
                             </Grid>
-                            <Grid Grid.Row='3'>
+                            <Grid Grid.Row='3' Margin='0,8,0,0'>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width='*'/>
-                                    <ColumnDefinition Width='8'/>
-                                    <ColumnDefinition Width='Auto'/>
                                     <ColumnDefinition Width='8'/>
                                     <ColumnDefinition Width='Auto'/>
                                 </Grid.ColumnDefinitions>
@@ -855,10 +1233,7 @@ namespace SieuNhanHong
                                         <TextBlock Name='txtUpdateBtn' Text='Tìm bản mới' Foreground='White'/>
                                     </StackPanel>
                                 </Button>
-                                <Button Grid.Column='2' Name='btnEditList' Style='{StaticResource GhostBtn}' ToolTip='Sửa danh sách trang web được áp dụng'>
-                                    <TextBlock Style='{StaticResource Icon}' Text='&#xE70F;' FontSize='16'/>
-                                </Button>
-                                <Button Grid.Column='4' Name='btnOpenFolder' Style='{StaticResource GhostBtn}' ToolTip='Mở thư mục cài đặt'>
+                                <Button Grid.Column='2' Name='btnOpenFolder' Style='{StaticResource GhostBtn}' ToolTip='Mở thư mục cài đặt'>
                                     <TextBlock Style='{StaticResource Icon}' Text='&#xE838;' FontSize='16'/>
                                 </Button>
                             </Grid>
@@ -899,7 +1274,7 @@ namespace SieuNhanHong
                             <Button Name='btnGetSteam' Style='{StaticResource WinBtn}' Width='Auto' Margin='0,0,4,0' Visibility='Collapsed'>
                                 <TextBlock Text='Tải Steam' FontSize='13' FontWeight='Bold' Margin='10,0' Foreground='#FF7AC8'/>
                             </Button>
-                            <Button Name='btnResetDns' Style='{StaticResource WinBtn}' Width='Auto' Padding='10,0'>
+                            <Button Name='btnResetDns' Style='{StaticResource WinBtn}' Width='Auto'>
                                 <TextBlock Text='Khôi phục mạng mặc định' FontSize='13' Margin='10,0' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
                             </Button>
                             <Button Name='btnClearLog' Style='{StaticResource WinBtn}' Width='Auto' Margin='4,0,0,0'>
@@ -922,14 +1297,20 @@ namespace SieuNhanHong
             public TextBlock Status;
         }
 
-        private readonly string screenshotPath;
+        private readonly string screenshotPath, appsShotPath;
         private Window win;
         private AppSettings settings;
         private bool busy;
         private bool running;
         private bool loadingUi;
-        private Gdpi.ReleaseInfo latest;
+        private bool trayHintShown;
+        private bool exiting;
+        private Gdpi.ReleaseInfo gdpiLatest, appLatest;
         private readonly List<CheckRow> checks = new List<CheckRow>();
+
+        private System.Windows.Forms.NotifyIcon tray;
+        private System.Windows.Forms.ToolStripMenuItem trayToggle;
+        private System.Drawing.Icon iconOn, iconOff;
 
         private static readonly Brush BrPink = Hex("#EE2D9F");
         private static readonly Brush BrGreen = Hex("#3DDC97");
@@ -938,9 +1319,10 @@ namespace SieuNhanHong
         private static readonly Brush BrIdle = Hex("#6B5563");
         private static readonly Brush BrMuted = Hex("#BFA3B5");
 
-        public MainWindow(string screenshotPath)
+        public MainWindow(string screenshotPath, string appsShotPath)
         {
             this.screenshotPath = screenshotPath;
+            this.appsShotPath = appsShotPath;
         }
 
         private static SolidColorBrush Hex(string hex)
@@ -957,25 +1339,32 @@ namespace SieuNhanHong
 
         public Window Build()
         {
-            win = (Window)XamlReader.Parse(Xaml);
+            win = Theme.Parse(Xaml);
             settings = AppSettings.Load();
 
             Find<Grid>("bdTitleBar").MouseLeftButtonDown += DragWindow;
             Find<Border>("bdHeader").MouseLeftButtonDown += DragWindow;
-            Find<Button>("btnClose").Click += (s, e) => win.Close();
-            Find<Button>("btnMinimize").Click += (s, e) => win.WindowState = WindowState.Minimized;
+            Find<Button>("btnClose").Click += (s, e) => ExitApp();
+            Find<Button>("btnMinimize").Click += (s, e) => HideToTray();
+            win.Closing += (s, e) =>
+            {
+                // Alt+F4 exits the whole app instead of leaving a dead window behind the tray icon
+                if (!exiting) { e.Cancel = true; ExitApp(); }
+            };
             Find<Button>("btnClearLog").Click += (s, e) => Find<TextBox>("txtLog").Clear();
+            Find<TextBlock>("txtTitleVer").Text = "  ·  v" + AppUpdater.CurrentVersion;
+            Find<TextBlock>("txtAppVer").Text = "v" + AppUpdater.CurrentVersion;
 
             LoadLogo();
             BuildCheckRows();
+            SetupTray();
 
             loadingUi = true;
-            Find<CheckBox>("chkSteamOnly").IsChecked = settings.SteamOnly;
             Find<CheckBox>("chkAutoStart").IsChecked = settings.AutoStart || Gdpi.ServiceExists();
             Find<CheckBox>("chkStrong").IsChecked = settings.StrongMode;
             loadingUi = false;
 
-            foreach (var name in new[] { "chkSteamOnly", "chkAutoStart", "chkStrong" })
+            foreach (var name in new[] { "chkAutoStart", "chkStrong" })
             {
                 var cb = Find<CheckBox>(name);
                 cb.Checked += OnOptionChanged;
@@ -987,9 +1376,9 @@ namespace SieuNhanHong
             power.MouseEnter += (s, e) => power.RenderTransform = new ScaleTransform(1.04, 1.04, 88, 88);
             power.MouseLeave += (s, e) => power.RenderTransform = null;
 
+            Find<Button>("btnPickApps").Click += (s, e) => PickApps();
             Find<Button>("btnTest").Click += (s, e) => RunChecks();
             Find<Button>("btnUpdate").Click += (s, e) => OnUpdateClick();
-            Find<Button>("btnEditList").Click += (s, e) => OpenBlacklist();
             Find<Button>("btnOpenFolder").Click += (s, e) => Process.Start("explorer.exe", Gdpi.Root);
             Find<Button>("btnResetDns").Click += (s, e) => ResetDns();
             Find<Button>("btnGetSteam").Click += (s, e) =>
@@ -998,11 +1387,8 @@ namespace SieuNhanHong
                 Program.OpenUrl(Program.SteamDownloadUrl);
             };
 
-            UpdateSteamOnlyHint();
             running = Gdpi.IsRunning();
             RenderState();
-
-            win.Loaded += (s, e) => OnLoaded();
 
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             timer.Tick += (s, e) =>
@@ -1021,20 +1407,35 @@ namespace SieuNhanHong
             if (e.ButtonState == MouseButtonState.Pressed) win.DragMove();
         }
 
-        private void OnLoaded()
+        public void Init(bool startInTray)
         {
             Log("Siêu Nhân Hồng đã sẵn sàng biến hình!");
+            if (startInTray) Log("App đang chạy ở khay (cạnh đồng hồ). Bấm đúp vào biểu tượng để mở.");
+
             if (screenshotPath != null)
             {
                 var shot = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
-                shot.Tick += (s, e) => { shot.Stop(); SaveScreenshot(); };
+                shot.Tick += (s, e) => { shot.Stop(); SaveScreenshot(win, screenshotPath); ExitApp(); };
                 shot.Start();
+            }
+            if (appsShotPath != null)
+            {
+                var picker = new AppPickerWindow(settings).Build(win);
+                picker.Show();
+                var shot = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                shot.Tick += (s, e) => { shot.Stop(); SaveScreenshot(picker, appsShotPath); ExitApp(); };
+                shot.Start();
+                return;
             }
 
             Background(() =>
             {
                 Gdpi.EnsureInstalled(Log);
-                Ui(() => Find<TextBlock>("txtVerInstalled").Text = FormatVer(Gdpi.InstalledVersion()));
+                Ui(() =>
+                {
+                    Find<TextBlock>("txtVerInstalled").Text = FormatVer(Gdpi.InstalledVersion());
+                    RenderState();
+                });
                 Log(running ? "Đang hoạt động, Steam đã được mở khoá." : "Chưa bật. Bấm vào nút tròn để bật.");
                 if (Program.FindSteamExe() == null)
                 {
@@ -1044,6 +1445,108 @@ namespace SieuNhanHong
                 CheckLatest(false);
             });
             RunChecks();
+        }
+
+        // ---------------- tray ----------------
+        private void SetupTray()
+        {
+            try
+            {
+                iconOn = IconFromLogo(false);
+                iconOff = IconFromLogo(true);
+            }
+            catch
+            {
+                iconOn = iconOff = System.Drawing.SystemIcons.Application;
+            }
+
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+            var open = new System.Windows.Forms.ToolStripMenuItem("Mở Siêu Nhân Hồng");
+            open.Font = new System.Drawing.Font(open.Font, System.Drawing.FontStyle.Bold);
+            open.Click += (s, e) => ShowFromTray();
+            trayToggle = new System.Windows.Forms.ToolStripMenuItem("Bật");
+            trayToggle.Click += (s, e) => TogglePower();
+            var exit = new System.Windows.Forms.ToolStripMenuItem("Thoát app");
+            exit.Click += (s, e) => ExitApp();
+            menu.Items.Add(open);
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(trayToggle);
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(exit);
+
+            tray = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = iconOff,
+                Text = "Siêu Nhân Hồng",
+                ContextMenuStrip = menu,
+                Visible = screenshotPath == null && appsShotPath == null
+            };
+            tray.MouseClick += (s, e) =>
+            {
+                if (e.Button == System.Windows.Forms.MouseButtons.Left) ShowFromTray();
+            };
+        }
+
+        // Tray icon drawn from the helmet logo: pink when on, grey when off
+        private static System.Drawing.Icon IconFromLogo(bool gray)
+        {
+            using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("AppIcon.png"))
+            using (var src = new System.Drawing.Bitmap(s))
+            using (var bmp = new System.Drawing.Bitmap(32, 32))
+            {
+                using (var g = System.Drawing.Graphics.FromImage(bmp))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                    float scale = Math.Min(32f / src.Width, 32f / src.Height);
+                    int w = (int)(src.Width * scale), h = (int)(src.Height * scale);
+                    var dest = new System.Drawing.Rectangle((32 - w) / 2, (32 - h) / 2, w, h);
+
+                    System.Drawing.Imaging.ImageAttributes attrs = null;
+                    if (gray)
+                    {
+                        attrs = new System.Drawing.Imaging.ImageAttributes();
+                        attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(new[]
+                        {
+                            new float[] { 0.3f, 0.3f, 0.3f, 0, 0 },
+                            new float[] { 0.59f, 0.59f, 0.59f, 0, 0 },
+                            new float[] { 0.11f, 0.11f, 0.11f, 0, 0 },
+                            new float[] { 0, 0, 0, 0.8f, 0 },
+                            new float[] { 0, 0, 0, 0, 1 }
+                        }));
+                    }
+                    g.DrawImage(src, dest, 0, 0, src.Width, src.Height, System.Drawing.GraphicsUnit.Pixel, attrs);
+                }
+                return System.Drawing.Icon.FromHandle(bmp.GetHicon());
+            }
+        }
+
+        private void HideToTray()
+        {
+            win.Hide();
+            if (!trayHintShown)
+            {
+                trayHintShown = true;
+                tray.ShowBalloonTip(4000, "Siêu Nhân Hồng vẫn đang chạy",
+                    "App đã thu nhỏ xuống đây. Bấm vào biểu tượng mũ hồng để mở lại.",
+                    System.Windows.Forms.ToolTipIcon.Info);
+            }
+        }
+
+        public void ShowFromTray()
+        {
+            win.Show();
+            if (win.WindowState == WindowState.Minimized) win.WindowState = WindowState.Normal;
+            win.Activate();
+            win.Topmost = true;
+            win.Topmost = false;
+        }
+
+        private void ExitApp()
+        {
+            exiting = true;
+            if (tray != null) { tray.Visible = false; tray.Dispose(); }
+            Application.Current.Shutdown();
         }
 
         // ---------------- power ----------------
@@ -1059,9 +1562,8 @@ namespace SieuNhanHong
             Background(() =>
             {
                 Gdpi.EnsureInstalled(Log);
-                Log(string.Format("Đang bật ({0}, {1})...",
-                    settings.SteamOnly ? "chỉ dùng cho Steam" : "dùng cho mọi trang web",
-                    settings.StrongMode ? "chế độ mạnh" : "chế độ thường"));
+                Log(string.Format("Đang bật (cho {0}, {1})...",
+                    settings.ScopeText(), settings.StrongMode ? "chế độ mạnh" : "chế độ thường"));
                 bool ok = Gdpi.Start(settings, Log);
                 Log(ok ? "BIẾN HÌNH THÀNH CÔNG! Giờ bạn có thể mở Steam." : "Không bật được. Hãy tắt phần mềm diệt virus rồi thử lại.");
                 Ui(() =>
@@ -1069,6 +1571,8 @@ namespace SieuNhanHong
                     running = Gdpi.IsRunning();
                     SetBusy(false, null);
                     RenderState();
+                    if (ok && !win.IsVisible)
+                        tray.ShowBalloonTip(3000, "Siêu Nhân Hồng", "Đã bật. Giờ bạn có thể mở Steam.", System.Windows.Forms.ToolTipIcon.Info);
                 });
                 if (ok) { Thread.Sleep(500); Ui(RunChecks); }
             });
@@ -1094,11 +1598,14 @@ namespace SieuNhanHong
         private void OnOptionChanged(object sender, RoutedEventArgs e)
         {
             if (loadingUi) return;
-            settings.SteamOnly = Find<CheckBox>("chkSteamOnly").IsChecked == true;
             settings.AutoStart = Find<CheckBox>("chkAutoStart").IsChecked == true;
             settings.StrongMode = Find<CheckBox>("chkStrong").IsChecked == true;
+            SettingsChanged();
+        }
+
+        private void SettingsChanged()
+        {
             settings.Save();
-            UpdateSteamOnlyHint();
             RenderState();
 
             if (running && !busy)
@@ -1112,11 +1619,15 @@ namespace SieuNhanHong
             }
         }
 
-        private void UpdateSteamOnlyHint()
+        private void PickApps()
         {
-            Find<TextBlock>("txtSteamOnlyHint").Text = settings.SteamOnly
-                ? "Tắt để dùng cho mọi trang web"
-                : "Đang dùng cho mọi trang web";
+            if (busy) return;
+            var dlg = new AppPickerWindow(settings).Build(win);
+            if (dlg.ShowDialog() == true)
+            {
+                Log("Áp dụng cho: " + settings.ScopeText() + ".");
+                SettingsChanged();
+            }
         }
 
         private void SetBusy(bool b, string label)
@@ -1128,8 +1639,9 @@ namespace SieuNhanHong
                 Find<TextBlock>("txtStateTitle").Text = label;
                 Find<TextBlock>("txtStatusPill").Text = label;
                 Find<Ellipse>("ledStatus").Fill = BrAmber;
+                trayToggle.Enabled = false;
             }
-            foreach (var name in new[] { "chkSteamOnly", "chkAutoStart", "chkStrong", "btnUpdate" })
+            foreach (var name in new[] { "chkAutoStart", "chkStrong", "btnPickApps", "btnUpdate" })
                 ((UIElement)win.FindName(name)).IsEnabled = !b;
         }
 
@@ -1139,16 +1651,20 @@ namespace SieuNhanHong
             var core = Find<Ellipse>("ellPowerCore");
             var ring = Find<Ellipse>("ellPowerRing");
             var icon = Find<TextBlock>("txtPowerIcon");
-            string scope = settings.SteamOnly ? "Chỉ Steam" : "Mọi trang web";
+            string scope = settings.ScopeText();
             string mode = settings.StrongMode ? "chế độ mạnh" : "chế độ thường";
+            var appNames = AppPreset.All.Where(p => settings.Apps.Contains(p.Id)).Select(p => p.Name).ToArray();
+            Find<TextBlock>("txtScope").Text = settings.AllSites ? "Mọi trang web và app"
+                : appNames.Length > 0 ? string.Join(", ", appNames) : scope;
 
+            trayToggle.Enabled = true;
             if (running)
             {
                 core.Fill = (Brush)win.FindResource("PinkGrad");
                 ring.Stroke = BrPink;
                 icon.Foreground = Brushes.White;
                 Find<TextBlock>("txtPowerLabel").Text = "ĐANG BẬT";
-                Find<TextBlock>("txtStateTitle").Text = "Đã mở khoá Steam";
+                Find<TextBlock>("txtStateTitle").Text = "Đã mở khoá";
                 Find<TextBlock>("txtStateDesc").Text = scope + " · " + mode + "\nBấm vào nút tròn để tắt";
                 Find<TextBlock>("txtStatusPill").Text = "Đang hoạt động · " + scope;
                 Find<Ellipse>("ledStatus").Fill = BrGreen;
@@ -1157,6 +1673,10 @@ namespace SieuNhanHong
                 core.Effect = glow;
                 glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
                     new DoubleAnimation(22, 48, TimeSpan.FromSeconds(1.4)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+
+                tray.Icon = iconOn;
+                tray.Text = "Siêu Nhân Hồng - Đang hoạt động";
+                trayToggle.Text = "Tắt";
             }
             else
             {
@@ -1169,6 +1689,10 @@ namespace SieuNhanHong
                 Find<TextBlock>("txtStateDesc").Text = "Bấm vào nút tròn để bật\n" + scope + " · " + mode;
                 Find<TextBlock>("txtStatusPill").Text = "Chưa bật";
                 Find<Ellipse>("ledStatus").Fill = BrIdle;
+
+                tray.Icon = iconOff;
+                tray.Text = "Siêu Nhân Hồng - Chưa bật";
+                trayToggle.Text = "Bật";
             }
         }
 
@@ -1284,54 +1808,91 @@ namespace SieuNhanHong
             }
         }
 
-        // ---------------- update ----------------
+        // ---------------- updates ----------------
+        private bool AppHasUpdate()
+        {
+            return appLatest != null && appLatest.ExeUrl != null &&
+                   Gdpi.CompareVersions(appLatest.Tag, AppUpdater.CurrentVersion) > 0;
+        }
+
+        private bool GdpiHasUpdate()
+        {
+            return gdpiLatest != null && gdpiLatest.ZipUrl != null &&
+                   Gdpi.CompareVersions(gdpiLatest.Tag, Gdpi.InstalledVersion()) > 0;
+        }
+
         private void CheckLatest(bool userAsked)
         {
-            try
+            try { appLatest = Gdpi.FetchLatest(AppUpdater.RepoApi); } catch { appLatest = null; }
+            try { gdpiLatest = Gdpi.FetchLatest(Gdpi.RepoApi); } catch { gdpiLatest = null; }
+
+            Ui(() =>
             {
-                var rel = Gdpi.FetchLatest();
-                latest = rel;
-                string installed = Gdpi.InstalledVersion();
-                bool newer = Gdpi.CompareVersions(rel.Tag, installed) > 0 && rel.ZipUrl != null;
-                Ui(() =>
-                {
-                    Find<TextBlock>("txtVerLatest").Text = FormatVer(rel.Tag);
-                    Find<TextBlock>("txtUpdateBtn").Text = newer ? "Cập nhật lên " + rel.Tag : "Tìm bản mới";
-                });
-                if (newer) Log("Có bản mới " + rel.Tag + ". Bấm nút Cập nhật để cài.");
-                else if (userAsked) Log("Bạn đang dùng bản mới nhất (v" + installed + ").");
-            }
-            catch (Exception ex)
+                Find<TextBlock>("txtAppLatest").Text = appLatest != null ? FormatVer(appLatest.Tag) : "Không rõ";
+                Find<TextBlock>("txtVerLatest").Text = gdpiLatest != null ? FormatVer(gdpiLatest.Tag) : "Không rõ";
+                Find<TextBlock>("txtUpdateBtn").Text = AppHasUpdate() ? "Cập nhật app lên " + FormatVer(appLatest.Tag)
+                    : GdpiHasUpdate() ? "Cập nhật công cụ lên " + FormatVer(gdpiLatest.Tag)
+                    : "Tìm bản mới";
+            });
+
+            if (AppHasUpdate()) Log("Có bản Siêu Nhân Hồng mới " + appLatest.Tag + ". Bấm nút Cập nhật để cài.");
+            if (GdpiHasUpdate()) Log("Có bản GoodbyeDPI mới " + gdpiLatest.Tag + ". Bấm nút Cập nhật để cài.");
+            if (userAsked)
             {
-                Ui(() => Find<TextBlock>("txtVerLatest").Text = "Không rõ");
-                if (userAsked) Log("Không tìm được bản mới, hãy kiểm tra mạng rồi thử lại.");
+                if (appLatest == null && gdpiLatest == null) Log("Không tìm được bản mới, hãy kiểm tra mạng rồi thử lại.");
+                else if (!AppHasUpdate() && !GdpiHasUpdate()) Log("Bạn đang dùng bản mới nhất.");
             }
         }
 
         private void OnUpdateClick()
         {
             if (busy) return;
-            bool hasNewer = latest != null && latest.ZipUrl != null &&
-                            Gdpi.CompareVersions(latest.Tag, Gdpi.InstalledVersion()) > 0;
-            if (!hasNewer)
-            {
-                Log("Đang tìm bản mới...");
-                Find<Button>("btnUpdate").IsEnabled = false;
-                Background(() =>
-                {
-                    CheckLatest(true);
-                    Ui(() => Find<Button>("btnUpdate").IsEnabled = true);
-                });
-                return;
-            }
+            if (AppHasUpdate()) { UpdateApp(); return; }
+            if (GdpiHasUpdate()) { UpdateGdpi(); return; }
 
-            bool wasRunning = running;
+            Log("Đang tìm bản mới...");
+            Find<Button>("btnUpdate").IsEnabled = false;
+            Background(() =>
+            {
+                CheckLatest(true);
+                Ui(() => Find<Button>("btnUpdate").IsEnabled = true);
+            });
+        }
+
+        private void UpdateApp()
+        {
             SetBusy(true, "Đang cập nhật...");
+            var rel = appLatest;
             Background(() =>
             {
                 try
                 {
-                    Gdpi.InstallUpdate(latest, Log);
+                    AppUpdater.Install(rel, Log);
+                    Ui(() =>
+                    {
+                        Program.ReleaseInstanceLock();
+                        Process.Start(Program.AppExePath);
+                        ExitApp();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log("Cập nhật không thành công, hãy thử lại sau. (" + ex.Message + ")");
+                    Ui(() => { SetBusy(false, null); RenderState(); });
+                }
+            });
+        }
+
+        private void UpdateGdpi()
+        {
+            bool wasRunning = running;
+            SetBusy(true, "Đang cập nhật...");
+            var rel = gdpiLatest;
+            Background(() =>
+            {
+                try
+                {
+                    Gdpi.InstallUpdate(rel, Log);
                     if (wasRunning)
                     {
                         Log("Đang bật lại...");
@@ -1346,7 +1907,7 @@ namespace SieuNhanHong
                 {
                     running = Gdpi.IsRunning();
                     Find<TextBlock>("txtVerInstalled").Text = FormatVer(Gdpi.InstalledVersion());
-                    Find<TextBlock>("txtUpdateBtn").Text = "Tìm bản mới";
+                    Find<TextBlock>("txtUpdateBtn").Text = AppHasUpdate() ? "Cập nhật app lên " + FormatVer(appLatest.Tag) : "Tìm bản mới";
                     SetBusy(false, null);
                     RenderState();
                 });
@@ -1358,20 +1919,6 @@ namespace SieuNhanHong
         {
             if (string.IsNullOrEmpty(v) || !char.IsDigit(v.TrimStart('v', 'V').FirstOrDefault())) return v;
             return "v" + v.TrimStart('v', 'V');
-        }
-
-        private void OpenBlacklist()
-        {
-            try
-            {
-                Gdpi.EnsureInstalled(Log);
-                Log("Đang mở danh sách trang web. Sửa xong nhớ lưu file, rồi tắt và bật lại nút tròn.");
-                Process.Start("notepad.exe", "\"" + Gdpi.BlacklistPath + "\"");
-            }
-            catch
-            {
-                Log("Không mở được danh sách trang web.");
-            }
         }
 
         private void ResetDns()
@@ -1417,22 +1964,21 @@ namespace SieuNhanHong
             catch { }
         }
 
-        private void SaveScreenshot()
+        private static void SaveScreenshot(Window w, string path)
         {
             try
             {
-                var root = (FrameworkElement)win.Content;
-                var rtb = new RenderTargetBitmap((int)win.ActualWidth, (int)win.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                var root = (FrameworkElement)w.Content;
+                var rtb = new RenderTargetBitmap((int)w.ActualWidth, (int)w.ActualHeight, 96, 96, PixelFormats.Pbgra32);
                 var dv = new DrawingVisual();
                 using (var dc = dv.RenderOpen())
                     dc.DrawRectangle(new VisualBrush(root), null, new Rect(new Point(10, 10), new Size(root.ActualWidth, root.ActualHeight)));
                 rtb.Render(dv);
                 var enc = new PngBitmapEncoder();
                 enc.Frames.Add(BitmapFrame.Create(rtb));
-                using (var f = File.Create(screenshotPath)) enc.Save(f);
+                using (var f = File.Create(path)) enc.Save(f);
             }
             catch { }
-            win.Close();
         }
 
         private void Log(string msg)
