@@ -1,4 +1,4 @@
-# Siêu Nhân Hồng — Vượt chặn Steam
+# Siêu Nhân Hồng — Mở khoá Steam
 
 ![Giao diện](docs/screenshot.png)
 

@@ -3,7 +3,7 @@ chcp 65001 >nul
 title Dang bien dich Sieu Nhan Hong...
 pushd "%~dp0"
 echo ============================================================
-echo   DANG BIEN DICH: SIEU NHAN HONG - VUOT CHAN STEAM v4
+echo   DANG BIEN DICH: SIEU NHAN HONG - MO KHOA STEAM v4
 echo ============================================================
 echo.
 

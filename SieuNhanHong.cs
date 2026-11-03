@@ -27,8 +27,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 
-[assembly: AssemblyTitle("Siêu Nhân Hồng - Vượt chặn Steam")]
-[assembly: AssemblyDescription("Siêu Nhân Hồng - Vượt chặn Steam bằng GoodbyeDPI, không VPN, không lag")]
+[assembly: AssemblyTitle("Siêu Nhân Hồng - Mở khoá Steam")]
+[assembly: AssemblyDescription("Siêu Nhân Hồng - Mở khoá Steam bằng GoodbyeDPI, không VPN, không lag")]
 [assembly: AssemblyCompany("Newwyn Team")]
 [assembly: AssemblyProduct("Siêu Nhân Hồng")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
@@ -205,7 +205,7 @@ namespace SieuNhanHong
                     log("   -> Tạo dịch vụ thất bại: " + output.Trim());
                     return false;
                 }
-                RunCapture("sc.exe", "description " + ServiceName + " \"Vượt chặn DPI cho Steam - quản lý bởi Siêu Nhân Hồng\"");
+                RunCapture("sc.exe", "description " + ServiceName + " \"Mở khoá Steam - quản lý bởi Siêu Nhân Hồng\"");
                 RunCapture("sc.exe", "start " + ServiceName, out output);
                 log("   -> Đã cài chế độ tự chạy cùng Windows.");
             }
@@ -419,7 +419,7 @@ namespace SieuNhanHong
         private const string Xaml = @"
 <Window xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
         xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-        Title='Siêu Nhân Hồng - Vượt chặn Steam'
+        Title='Siêu Nhân Hồng - Mở khoá Steam'
         Width='1120' Height='720'
         WindowStartupLocation='CenterScreen'
         WindowStyle='None' AllowsTransparency='True' Background='Transparent'
@@ -661,7 +661,7 @@ namespace SieuNhanHong
                                 </LinearGradientBrush>
                             </TextBlock.Foreground>
                         </TextBlock>
-                        <TextBlock Text='Vượt chặn Steam bằng GoodbyeDPI  —  không VPN, không lag, vẫn tốc độ tối đa' Foreground='{StaticResource Muted}' FontSize='15' Margin='2,2,0,0'/>
+                        <TextBlock Text='Mở khoá Steam bằng GoodbyeDPI  —  không VPN, không lag, vẫn tốc độ tối đa' Foreground='{StaticResource Muted}' FontSize='15' Margin='2,2,0,0'/>
                     </StackPanel>
                     <Border Grid.Column='2' Name='bdStatusPill' CornerRadius='22' Padding='18,10' VerticalAlignment='Center' Background='#2A1722' BorderBrush='#4A2A3E' BorderThickness='1'>
                         <StackPanel Orientation='Horizontal'>
@@ -1176,7 +1176,7 @@ namespace SieuNhanHong
                         Log(passed == checks.Count
                             ? "Kiểm tra: tất cả máy chủ Steam đều thông suốt!"
                             : string.Format("Kiểm tra: {0}/{1} máy chủ thông suốt.{2}", passed, checks.Count,
-                                running ? " Thử bật Chế độ mạnh." : " Hãy bấm BIẾN HÌNH để bật vượt chặn."));
+                                running ? " Thử bật Chế độ mạnh." : " Hãy bấm BIẾN HÌNH để bật bảo vệ."));
                         Ui(() => btn.IsEnabled = true);
                     }
                 });
