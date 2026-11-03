@@ -1,0 +1,11 @@
+# Build output
+*.exe
+!goodbyedpi/goodbyedpi.exe
+*.pdb
+_preview.png
+
+# Local tooling / old scripts
+.agent/
+GEMINI.md
+Ellie Unlock Steam V3.bat
+app_icon.png
