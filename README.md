@@ -14,6 +14,11 @@ Bên dưới dùng [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI): **khôn
 - **Kiểm tra kết nối** tới Cửa hàng, Cộng đồng, Đăng nhập và máy chủ cập nhật game của Steam.
 - Sửa danh sách tên miền, đưa DNS về mặc định.
 
+## Yêu cầu máy
+- Windows 10 hoặc 11 bản 64-bit.
+- .NET Framework 4.5 trở lên (Windows 10/11 có sẵn 4.8). Nếu máy thiếu, app sẽ báo và mở trang tải chính thức của Microsoft.
+- Nếu máy chưa cài Steam, app hiện nút **Tải Steam** dẫn tới trang tải chính thức.
+
 ## Cài đặt & sử dụng
 1. Tải `SieuNhanHong.exe`, chạy (app tự xin quyền Administrator).
 2. Bấm nút **BIẾN HÌNH**. Lần đầu app tự giải nén GoodbyeDPI vào `C:\GoodbyeDPI`.

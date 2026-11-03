@@ -26,6 +26,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Siêu Nhân Hồng - Mở khoá Steam")]
 [assembly: AssemblyDescription("Siêu Nhân Hồng - Mở khoá Steam bằng GoodbyeDPI, không VPN, không lag")]
@@ -114,7 +115,7 @@ namespace SieuNhanHong
             Directory.CreateDirectory(BinDir);
             if (!File.Exists(ExePath))
             {
-                log("Đang cài GoodbyeDPI v" + BundledVersion + " (bản đóng gói sẵn) vào " + Root + "...");
+                log("Lần đầu sử dụng: đang chuẩn bị công cụ vào " + Root + "...");
                 ExtractResource("gdpi.goodbyedpi.exe", ExePath);
                 ExtractResource("gdpi.WinDivert.dll", System.IO.Path.Combine(BinDir, "WinDivert.dll"));
                 ExtractResource("gdpi.WinDivert64.sys", System.IO.Path.Combine(BinDir, "WinDivert64.sys"));
@@ -133,7 +134,7 @@ namespace SieuNhanHong
             if (!File.Exists(BlacklistPath))
             {
                 File.WriteAllLines(BlacklistPath, DefaultSteamDomains);
-                log("Đã tạo danh sách tên miền Steam: " + BlacklistPath);
+                log("Đã tạo danh sách trang web Steam: " + BlacklistPath);
             }
         }
 
@@ -141,7 +142,7 @@ namespace SieuNhanHong
         {
             using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
             {
-                if (s == null) throw new Exception("Thiếu tài nguyên đóng gói: " + name);
+                if (s == null) throw new Exception("File app bị thiếu dữ liệu, hãy tải lại app: " + name);
                 using (var f = File.Create(target)) s.CopyTo(f);
             }
         }
@@ -179,7 +180,7 @@ namespace SieuNhanHong
                 if (removeService)
                 {
                     RunCapture("sc.exe", "delete " + ServiceName);
-                    log("   -> Đã gỡ chế độ tự chạy cùng Windows.");
+                    log("   -> Đã tắt tự bật khi mở máy.");
                 }
             }
             foreach (var p in Process.GetProcessesByName("goodbyedpi"))
@@ -193,7 +194,7 @@ namespace SieuNhanHong
         {
             StopAll(log, true);
             string args = BuildArgs(s);
-            log("Tham số: " + args);
+            
 
             if (s.AutoStart)
             {
@@ -202,12 +203,12 @@ namespace SieuNhanHong
                 int code = RunCapture("sc.exe", "create " + ServiceName + " binPath= \"" + bin + "\" start= auto DisplayName= \"GoodbyeDPI (Siêu Nhân Hồng)\"", out output);
                 if (code != 0)
                 {
-                    log("   -> Tạo dịch vụ thất bại: " + output.Trim());
+                    log("   -> Không bật được chế độ tự bật khi mở máy: " + output.Trim());
                     return false;
                 }
                 RunCapture("sc.exe", "description " + ServiceName + " \"Mở khoá Steam - quản lý bởi Siêu Nhân Hồng\"");
                 RunCapture("sc.exe", "start " + ServiceName, out output);
-                log("   -> Đã cài chế độ tự chạy cùng Windows.");
+                log("   -> Đã bật chế độ tự bật khi mở máy.");
             }
             else
             {
@@ -280,7 +281,7 @@ namespace SieuNhanHong
             Directory.CreateDirectory(tmp);
             string zip = System.IO.Path.Combine(tmp, "goodbyedpi.zip");
 
-            log("Đang tải " + rel.ZipUrl);
+            log("Đang tải bản mới " + rel.Tag + " từ GitHub...");
             using (var wc = new WebClient())
             {
                 wc.Headers[HttpRequestHeader.UserAgent] = "SieuNhanHong-Updater";
@@ -292,10 +293,10 @@ namespace SieuNhanHong
             ZipFile.ExtractToDirectory(zip, ex);
             string newExe = Directory.GetFiles(ex, "goodbyedpi.exe", SearchOption.AllDirectories)
                 .FirstOrDefault(f => f.IndexOf("x86_64", StringComparison.OrdinalIgnoreCase) >= 0);
-            if (newExe == null) throw new Exception("Không tìm thấy goodbyedpi.exe (x86_64) trong gói tải về.");
+            if (newExe == null) throw new Exception("File tải về bị lỗi, hãy thử lại sau.");
             string newBin = System.IO.Path.GetDirectoryName(newExe);
 
-            log("Đang dừng GoodbyeDPI để thay file...");
+            log("Đang tạm dừng để thay file mới...");
             StopAll(log, false);
             RunCapture("sc.exe", "stop WinDivert");
             RunCapture("sc.exe", "stop WinDivert1.4");
@@ -315,7 +316,7 @@ namespace SieuNhanHong
 
             File.WriteAllText(VersionPath, rel.Tag.TrimStart('v', 'V'));
             try { Directory.Delete(tmp, true); } catch { }
-            log("   -> Đã cập nhật lên GoodbyeDPI " + rel.Tag + ".");
+            log("   -> Đã cập nhật lên bản " + rel.Tag + ".");
         }
 
         // ---------------- helpers ----------------
@@ -376,6 +377,8 @@ namespace SieuNhanHong
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "--screenshot") screenshotPath = args[i + 1];
 
+            if (!CheckRequirements()) return;
+
             if (!IsAdministrator())
             {
                 try
@@ -390,7 +393,7 @@ namespace SieuNhanHong
                 }
                 catch
                 {
-                    MessageBox.Show("Siêu Nhân Hồng cần quyền Administrator để điều khiển GoodbyeDPI!",
+                    MessageBox.Show("Siêu Nhân Hồng cần quyền quản trị (Administrator) để chạy. Hãy bấm Yes khi Windows hỏi.",
                                     "Cần quyền quản trị", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 return;
@@ -399,6 +402,63 @@ namespace SieuNhanHong
             var app = new Application();
             var window = new MainWindow(screenshotPath).Build();
             app.Run(window);
+        }
+
+        public const string DotNetDownloadUrl = "https://dotnet.microsoft.com/download/dotnet-framework/net48";
+        public const string SteamDownloadUrl = "https://store.steampowered.com/about/";
+
+        // Show a friendly message (and offer the official download page) when the PC is missing something
+        private static bool CheckRequirements()
+        {
+            if (!Environment.Is64BitOperatingSystem)
+            {
+                MessageBox.Show(
+                    "Máy bạn đang dùng Windows 32-bit.\n\nSiêu Nhân Hồng hiện chỉ chạy được trên Windows 64-bit (Windows 10 hoặc 11).",
+                    "Máy chưa hỗ trợ", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            // .NET Framework 4.5 or newer (release key 378389+); Windows 10/11 ship with 4.8
+            int release = 0;
+            try
+            {
+                using (var key = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64)
+                                            .OpenSubKey(@"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"))
+                {
+                    if (key != null) release = Convert.ToInt32(key.GetValue("Release", 0));
+                }
+            }
+            catch { }
+
+            if (release < 378389)
+            {
+                var answer = MessageBox.Show(
+                    "Máy bạn đang thiếu .NET Framework 4.8 (phần mềm miễn phí của Microsoft) nên app chưa chạy được.\n\n" +
+                    "Bấm Yes để mở trang tải chính thức của Microsoft. Cài xong, hãy khởi động lại máy rồi mở lại app.",
+                    "Thiếu .NET Framework", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (answer == MessageBoxResult.Yes) OpenUrl(DotNetDownloadUrl);
+                return false;
+            }
+            return true;
+        }
+
+        public static string FindSteamExe()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
+                {
+                    string exe = key == null ? null : key.GetValue("SteamExe") as string;
+                    if (!string.IsNullOrEmpty(exe) && File.Exists(exe)) return exe;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        public static void OpenUrl(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
         }
 
         private static bool IsAdministrator()
@@ -661,7 +721,7 @@ namespace SieuNhanHong
                                 </LinearGradientBrush>
                             </TextBlock.Foreground>
                         </TextBlock>
-                        <TextBlock Text='Mở khoá Steam bằng GoodbyeDPI  —  không VPN, không lag, vẫn tốc độ tối đa' Foreground='{StaticResource Muted}' FontSize='15' Margin='2,2,0,0'/>
+                        <TextBlock Text='Giúp vào Steam, tải và cập nhật game bình thường  —  không cần VPN, không giật lag' Foreground='{StaticResource Muted}' FontSize='15' Margin='2,2,0,0'/>
                     </StackPanel>
                     <Border Grid.Column='2' Name='bdStatusPill' CornerRadius='22' Padding='18,10' VerticalAlignment='Center' Background='#2A1722' BorderBrush='#4A2A3E' BorderThickness='1'>
                         <StackPanel Orientation='Horizontal'>
@@ -700,8 +760,8 @@ namespace SieuNhanHong
                             </StackPanel>
                         </Grid>
                         <StackPanel Grid.Row='2' HorizontalAlignment='Center'>
-                            <TextBlock Name='txtStateTitle' Text='Đang tắt' FontFamily='Segoe UI Variable Display, Segoe UI' FontSize='22' FontWeight='Bold' HorizontalAlignment='Center'/>
-                            <TextBlock Name='txtStateDesc' Text='Bấm nút để biến hình!' Foreground='{StaticResource Muted}' FontSize='14' HorizontalAlignment='Center' TextAlignment='Center' TextWrapping='Wrap' Margin='0,4,0,0'/>
+                            <TextBlock Name='txtStateTitle' Text='Chưa bật' FontFamily='Segoe UI Variable Display, Segoe UI' FontSize='22' FontWeight='Bold' HorizontalAlignment='Center'/>
+                            <TextBlock Name='txtStateDesc' Text='Bấm vào nút tròn để bật' Foreground='{StaticResource Muted}' FontSize='14' HorizontalAlignment='Center' TextAlignment='Center' TextWrapping='Wrap' Margin='0,4,0,0'/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -724,8 +784,8 @@ namespace SieuNhanHong
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Style='{StaticResource Icon}' Text='&#xE7FC;' FontSize='20' Foreground='#FF7AC8'/>
                                 <StackPanel Grid.Column='1' Margin='0,0,10,0'>
-                                    <TextBlock Text='Chỉ áp dụng cho Steam' FontWeight='SemiBold' FontSize='15'/>
-                                    <TextBlock Name='txtSteamOnlyHint' Text='Bỏ chọn để áp dụng cho mọi trang web' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
+                                    <TextBlock Text='Chỉ dùng cho Steam' FontWeight='SemiBold' FontSize='15'/>
+                                    <TextBlock Name='txtSteamOnlyHint' Text='Tắt để dùng cho mọi trang web' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
                                 </StackPanel>
                                 <CheckBox Grid.Column='2' Name='chkSteamOnly' Style='{StaticResource Switch}' IsChecked='True'/>
                             </Grid>
@@ -737,8 +797,8 @@ namespace SieuNhanHong
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Style='{StaticResource Icon}' Text='&#xE7E8;' FontSize='20' Foreground='#FF7AC8'/>
                                 <StackPanel Grid.Column='1' Margin='0,0,10,0'>
-                                    <TextBlock Text='Tự bật cùng Windows' FontWeight='SemiBold' FontSize='15'/>
-                                    <TextBlock Text='Chạy ngầm, không cần mở app' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
+                                    <TextBlock Text='Tự bật khi mở máy' FontWeight='SemiBold' FontSize='15'/>
+                                    <TextBlock Text='Không cần mở app mỗi lần bật máy' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
                                 </StackPanel>
                                 <CheckBox Grid.Column='2' Name='chkAutoStart' Style='{StaticResource Switch}'/>
                             </Grid>
@@ -751,7 +811,7 @@ namespace SieuNhanHong
                                 <TextBlock Style='{StaticResource Icon}' Text='&#xE945;' FontSize='20' Foreground='#FF7AC8'/>
                                 <StackPanel Grid.Column='1' Margin='0,0,10,0'>
                                     <TextBlock Text='Chế độ mạnh' FontWeight='SemiBold' FontSize='15'/>
-                                    <TextBlock Text='Chỉ bật khi chế độ nhẹ không vào được' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
+                                    <TextBlock Text='Bật khi vẫn chưa vào được Steam' Foreground='{StaticResource Muted}' FontSize='13' TextWrapping='Wrap'/>
                                 </StackPanel>
                                 <CheckBox Grid.Column='2' Name='chkStrong' Style='{StaticResource Switch}'/>
                             </Grid>
@@ -766,18 +826,18 @@ namespace SieuNhanHong
                                 <RowDefinition Height='*'/>
                                 <RowDefinition Height='Auto'/>
                             </Grid.RowDefinitions>
-                            <TextBlock Style='{StaticResource CardTitle}' Text='GOODBYEDPI'/>
+                            <TextBlock Style='{StaticResource CardTitle}' Text='PHIÊN BẢN CÔNG CỤ'/>
                             <Grid Grid.Row='1'>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width='*'/>
                                     <ColumnDefinition Width='*'/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text='Đang dùng' Foreground='{StaticResource Muted}' FontSize='13'/>
+                                    <TextBlock Text='Máy bạn đang có' Foreground='{StaticResource Muted}' FontSize='13'/>
                                     <TextBlock Name='txtVerInstalled' Text='...' FontSize='22' FontWeight='Bold'/>
                                 </StackPanel>
                                 <StackPanel Grid.Column='1'>
-                                    <TextBlock Text='Mới nhất trên GitHub' Foreground='{StaticResource Muted}' FontSize='13'/>
+                                    <TextBlock Text='Bản mới nhất' Foreground='{StaticResource Muted}' FontSize='13'/>
                                     <TextBlock Name='txtVerLatest' Text='...' FontSize='22' FontWeight='Bold' Foreground='#FF7AC8'/>
                                 </StackPanel>
                             </Grid>
@@ -792,13 +852,13 @@ namespace SieuNhanHong
                                 <Button Name='btnUpdate' Style='{StaticResource PinkBtn}'>
                                     <StackPanel Orientation='Horizontal'>
                                         <TextBlock Style='{StaticResource Icon}' Text='&#xE895;' FontSize='15' Foreground='White' Margin='0,0,8,0'/>
-                                        <TextBlock Name='txtUpdateBtn' Text='Kiểm tra cập nhật' Foreground='White'/>
+                                        <TextBlock Name='txtUpdateBtn' Text='Tìm bản mới' Foreground='White'/>
                                     </StackPanel>
                                 </Button>
-                                <Button Grid.Column='2' Name='btnEditList' Style='{StaticResource GhostBtn}' ToolTip='Sửa danh sách tên miền Steam'>
+                                <Button Grid.Column='2' Name='btnEditList' Style='{StaticResource GhostBtn}' ToolTip='Sửa danh sách trang web được áp dụng'>
                                     <TextBlock Style='{StaticResource Icon}' Text='&#xE70F;' FontSize='16'/>
                                 </Button>
-                                <Button Grid.Column='4' Name='btnOpenFolder' Style='{StaticResource GhostBtn}' ToolTip='Mở thư mục GoodbyeDPI'>
+                                <Button Grid.Column='4' Name='btnOpenFolder' Style='{StaticResource GhostBtn}' ToolTip='Mở thư mục cài đặt'>
                                     <TextBlock Style='{StaticResource Icon}' Text='&#xE838;' FontSize='16'/>
                                 </Button>
                             </Grid>
@@ -814,7 +874,7 @@ namespace SieuNhanHong
                             <RowDefinition Height='*'/>
                             <RowDefinition Height='Auto'/>
                         </Grid.RowDefinitions>
-                        <TextBlock Style='{StaticResource CardTitle}' Text='KIỂM TRA KẾT NỐI STEAM'/>
+                        <TextBlock Style='{StaticResource CardTitle}' Text='THỬ VÀO STEAM'/>
                         <StackPanel Grid.Row='1' Name='pnlChecks'/>
                         <Button Grid.Row='2' Name='btnTest' Style='{StaticResource GhostBtn}' Margin='0,10,0,0'>
                             <StackPanel Orientation='Horizontal'>
@@ -836,8 +896,11 @@ namespace SieuNhanHong
                     <Grid Margin='0,0,0,4'>
                         <TextBlock Text='NHẬT KÝ HOẠT ĐỘNG' Foreground='#FF7AC8' FontWeight='Bold' FontSize='13' VerticalAlignment='Center'/>
                         <StackPanel Orientation='Horizontal' HorizontalAlignment='Right'>
+                            <Button Name='btnGetSteam' Style='{StaticResource WinBtn}' Width='Auto' Margin='0,0,4,0' Visibility='Collapsed'>
+                                <TextBlock Text='Tải Steam' FontSize='13' FontWeight='Bold' Margin='10,0' Foreground='#FF7AC8'/>
+                            </Button>
                             <Button Name='btnResetDns' Style='{StaticResource WinBtn}' Width='Auto' Padding='10,0'>
-                                <TextBlock Text='Đưa DNS về mặc định' FontSize='13' Margin='10,0' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
+                                <TextBlock Text='Khôi phục mạng mặc định' FontSize='13' Margin='10,0' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
                             </Button>
                             <Button Name='btnClearLog' Style='{StaticResource WinBtn}' Width='Auto' Margin='4,0,0,0'>
                                 <TextBlock Text='Xoá' FontSize='13' Margin='10,0' Foreground='{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}'/>
@@ -929,6 +992,11 @@ namespace SieuNhanHong
             Find<Button>("btnEditList").Click += (s, e) => OpenBlacklist();
             Find<Button>("btnOpenFolder").Click += (s, e) => Process.Start("explorer.exe", Gdpi.Root);
             Find<Button>("btnResetDns").Click += (s, e) => ResetDns();
+            Find<Button>("btnGetSteam").Click += (s, e) =>
+            {
+                Log("Đang mở trang tải Steam chính thức. Nếu trang không mở được, hãy bấm nút tròn để bật trước.");
+                Program.OpenUrl(Program.SteamDownloadUrl);
+            };
 
             UpdateSteamOnlyHint();
             running = Gdpi.IsRunning();
@@ -967,7 +1035,12 @@ namespace SieuNhanHong
             {
                 Gdpi.EnsureInstalled(Log);
                 Ui(() => Find<TextBlock>("txtVerInstalled").Text = FormatVer(Gdpi.InstalledVersion()));
-                Log(running ? "GoodbyeDPI đang chạy." : "GoodbyeDPI đang tắt. Bấm nút BIẾN HÌNH để bật.");
+                Log(running ? "Đang hoạt động, Steam đã được mở khoá." : "Chưa bật. Bấm vào nút tròn để bật.");
+                if (Program.FindSteamExe() == null)
+                {
+                    Log("Chưa thấy Steam trên máy này. Bấm nút \"Tải Steam\" ở góc phải để tải từ trang chính thức.");
+                    Ui(() => Find<Button>("btnGetSteam").Visibility = Visibility.Visible);
+                }
                 CheckLatest(false);
             });
             RunChecks();
@@ -986,11 +1059,11 @@ namespace SieuNhanHong
             Background(() =>
             {
                 Gdpi.EnsureInstalled(Log);
-                Log(string.Format("Đang bật GoodbyeDPI ({0}, {1})...",
-                    settings.SteamOnly ? "chỉ Steam" : "mọi trang web",
-                    settings.StrongMode ? "chế độ mạnh" : "chế độ nhẹ"));
+                Log(string.Format("Đang bật ({0}, {1})...",
+                    settings.SteamOnly ? "chỉ dùng cho Steam" : "dùng cho mọi trang web",
+                    settings.StrongMode ? "chế độ mạnh" : "chế độ thường"));
                 bool ok = Gdpi.Start(settings, Log);
-                Log(ok ? "BIẾN HÌNH THÀNH CÔNG! Steam đã được bảo vệ." : "Không bật được GoodbyeDPI. Xem nhật ký phía trên.");
+                Log(ok ? "BIẾN HÌNH THÀNH CÔNG! Giờ bạn có thể mở Steam." : "Không bật được. Hãy tắt phần mềm diệt virus rồi thử lại.");
                 Ui(() =>
                 {
                     running = Gdpi.IsRunning();
@@ -1006,7 +1079,7 @@ namespace SieuNhanHong
             SetBusy(true, "Đang tắt...");
             Background(() =>
             {
-                Log("Đang tắt GoodbyeDPI...");
+                Log("Đang tắt...");
                 Gdpi.StopAll(Log, true);
                 Log("Đã tắt. Mạng trở về bình thường.");
                 Ui(() =>
@@ -1042,8 +1115,8 @@ namespace SieuNhanHong
         private void UpdateSteamOnlyHint()
         {
             Find<TextBlock>("txtSteamOnlyHint").Text = settings.SteamOnly
-                ? "Bỏ chọn để áp dụng cho mọi trang web"
-                : "Đang áp dụng cho mọi trang web";
+                ? "Tắt để dùng cho mọi trang web"
+                : "Đang dùng cho mọi trang web";
         }
 
         private void SetBusy(bool b, string label)
@@ -1067,7 +1140,7 @@ namespace SieuNhanHong
             var ring = Find<Ellipse>("ellPowerRing");
             var icon = Find<TextBlock>("txtPowerIcon");
             string scope = settings.SteamOnly ? "Chỉ Steam" : "Mọi trang web";
-            string mode = settings.StrongMode ? "chế độ mạnh" : "chế độ nhẹ";
+            string mode = settings.StrongMode ? "chế độ mạnh" : "chế độ thường";
 
             if (running)
             {
@@ -1075,9 +1148,9 @@ namespace SieuNhanHong
                 ring.Stroke = BrPink;
                 icon.Foreground = Brushes.White;
                 Find<TextBlock>("txtPowerLabel").Text = "ĐANG BẬT";
-                Find<TextBlock>("txtStateTitle").Text = "Đang bảo vệ";
-                Find<TextBlock>("txtStateDesc").Text = scope + " · " + mode + "\nBấm nút để tắt";
-                Find<TextBlock>("txtStatusPill").Text = "Đang bảo vệ · " + scope;
+                Find<TextBlock>("txtStateTitle").Text = "Đã mở khoá Steam";
+                Find<TextBlock>("txtStateDesc").Text = scope + " · " + mode + "\nBấm vào nút tròn để tắt";
+                Find<TextBlock>("txtStatusPill").Text = "Đang hoạt động · " + scope;
                 Find<Ellipse>("ledStatus").Fill = BrGreen;
 
                 var glow = new DropShadowEffect { Color = (Color)ColorConverter.ConvertFromString("#EE2D9F"), ShadowDepth = 0, BlurRadius = 30, Opacity = 0.9 };
@@ -1092,8 +1165,8 @@ namespace SieuNhanHong
                 icon.Foreground = BrMuted;
                 core.Effect = new DropShadowEffect { Color = Colors.Black, ShadowDepth = 0, BlurRadius = 12, Opacity = 0.6 };
                 Find<TextBlock>("txtPowerLabel").Text = "BẬT";
-                Find<TextBlock>("txtStateTitle").Text = "Đang tắt";
-                Find<TextBlock>("txtStateDesc").Text = "Bấm nút để biến hình!\n" + scope + " · " + mode;
+                Find<TextBlock>("txtStateTitle").Text = "Chưa bật";
+                Find<TextBlock>("txtStateDesc").Text = "Bấm vào nút tròn để bật\n" + scope + " · " + mode;
                 Find<TextBlock>("txtStatusPill").Text = "Chưa bật";
                 Find<Ellipse>("ledStatus").Fill = BrIdle;
             }
@@ -1107,7 +1180,7 @@ namespace SieuNhanHong
                 new[] { "Cửa hàng Steam", "store.steampowered.com" },
                 new[] { "Cộng đồng Steam", "steamcommunity.com" },
                 new[] { "Đăng nhập Steam", "login.steampowered.com" },
-                new[] { "Máy chủ cập nhật game", "client-update.steamstatic.com" }
+                new[] { "Tải và cập nhật game", "client-update.steamstatic.com" }
             };
             var panel = Find<StackPanel>("pnlChecks");
             foreach (var d in defs)
@@ -1129,7 +1202,7 @@ namespace SieuNhanHong
                 var names = new StackPanel();
                 names.Children.Add(new TextBlock { Text = row.Name, FontSize = 15, FontWeight = FontWeights.SemiBold });
                 names.Children.Add(new TextBlock { Text = row.Host, FontSize = 12, Foreground = BrMuted });
-                row.Status = new TextBlock { Text = "Chưa kiểm tra", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = BrMuted, VerticalAlignment = VerticalAlignment.Center };
+                row.Status = new TextBlock { Text = "Chưa thử", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = BrMuted, VerticalAlignment = VerticalAlignment.Center };
 
                 Grid.SetColumn(names, 1);
                 Grid.SetColumn(row.Status, 2);
@@ -1167,16 +1240,16 @@ namespace SieuNhanHong
                     Ui(() =>
                     {
                         row.Led.Fill = ok ? BrGreen : BrRed;
-                        row.Status.Text = ok ? "Thông suốt" : "Bị chặn";
+                        row.Status.Text = ok ? "Vào được" : "Bị chặn";
                         row.Status.Foreground = ok ? BrGreen : BrRed;
                     });
-                    if (!ok) Log(row.Name + ": bị chặn (" + detail + ")");
+                    if (!ok) Log(row.Name + ": chưa vào được.");
                     if (Interlocked.Decrement(ref remaining) == 0)
                     {
                         Log(passed == checks.Count
-                            ? "Kiểm tra: tất cả máy chủ Steam đều thông suốt!"
-                            : string.Format("Kiểm tra: {0}/{1} máy chủ thông suốt.{2}", passed, checks.Count,
-                                running ? " Thử bật Chế độ mạnh." : " Hãy bấm BIẾN HÌNH để bật bảo vệ."));
+                            ? "Kết quả: vào Steam bình thường!"
+                            : string.Format("Kết quả: {0}/{1} mục vào được.{2}", passed, checks.Count,
+                                running ? " Hãy bật Chế độ mạnh rồi thử lại." : " Hãy bấm vào nút tròn để bật."));
                         Ui(() => btn.IsEnabled = true);
                     }
                 });
@@ -1223,15 +1296,15 @@ namespace SieuNhanHong
                 Ui(() =>
                 {
                     Find<TextBlock>("txtVerLatest").Text = FormatVer(rel.Tag);
-                    Find<TextBlock>("txtUpdateBtn").Text = newer ? "Cập nhật lên " + rel.Tag : "Kiểm tra cập nhật";
+                    Find<TextBlock>("txtUpdateBtn").Text = newer ? "Cập nhật lên " + rel.Tag : "Tìm bản mới";
                 });
-                if (newer) Log("Có phiên bản GoodbyeDPI mới: " + rel.Tag + ". Bấm nút Cập nhật để cài.");
-                else if (userAsked) Log("Bạn đang dùng bản GoodbyeDPI mới nhất (v" + installed + ").");
+                if (newer) Log("Có bản mới " + rel.Tag + ". Bấm nút Cập nhật để cài.");
+                else if (userAsked) Log("Bạn đang dùng bản mới nhất (v" + installed + ").");
             }
             catch (Exception ex)
             {
                 Ui(() => Find<TextBlock>("txtVerLatest").Text = "Không rõ");
-                if (userAsked) Log("Không kiểm tra được bản mới: " + ex.Message);
+                if (userAsked) Log("Không tìm được bản mới, hãy kiểm tra mạng rồi thử lại.");
             }
         }
 
@@ -1242,7 +1315,7 @@ namespace SieuNhanHong
                             Gdpi.CompareVersions(latest.Tag, Gdpi.InstalledVersion()) > 0;
             if (!hasNewer)
             {
-                Log("Đang kiểm tra phiên bản mới trên GitHub...");
+                Log("Đang tìm bản mới...");
                 Find<Button>("btnUpdate").IsEnabled = false;
                 Background(() =>
                 {
@@ -1261,19 +1334,19 @@ namespace SieuNhanHong
                     Gdpi.InstallUpdate(latest, Log);
                     if (wasRunning)
                     {
-                        Log("Đang bật lại GoodbyeDPI...");
+                        Log("Đang bật lại...");
                         Gdpi.Start(settings, Log);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log("Cập nhật thất bại: " + ex.Message);
+                    Log("Cập nhật không thành công, hãy thử lại sau. (" + ex.Message + ")");
                 }
                 Ui(() =>
                 {
                     running = Gdpi.IsRunning();
                     Find<TextBlock>("txtVerInstalled").Text = FormatVer(Gdpi.InstalledVersion());
-                    Find<TextBlock>("txtUpdateBtn").Text = "Kiểm tra cập nhật";
+                    Find<TextBlock>("txtUpdateBtn").Text = "Tìm bản mới";
                     SetBusy(false, null);
                     RenderState();
                 });
@@ -1292,12 +1365,12 @@ namespace SieuNhanHong
             try
             {
                 Gdpi.EnsureInstalled(Log);
-                Log("Đang mở danh sách tên miền. Lưu file xong, tắt rồi bật lại để áp dụng.");
+                Log("Đang mở danh sách trang web. Sửa xong nhớ lưu file, rồi tắt và bật lại nút tròn.");
                 Process.Start("notepad.exe", "\"" + Gdpi.BlacklistPath + "\"");
             }
-            catch (Exception ex)
+            catch
             {
-                Log("Không mở được danh sách: " + ex.Message);
+                Log("Không mở được danh sách trang web.");
             }
         }
 
@@ -1305,7 +1378,7 @@ namespace SieuNhanHong
         {
             Background(() =>
             {
-                Log("Đang đưa DNS về tự động (DHCP)...");
+                Log("Đang khôi phục cài đặt mạng mặc định...");
                 foreach (var n in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     if (n.OperationalStatus != OperationalStatus.Up || n.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
@@ -1315,12 +1388,12 @@ namespace SieuNhanHong
                         if (!p.GatewayAddresses.Any(g => g.Address.ToString() != "0.0.0.0" && g.Address.ToString() != "::")) continue;
                         Gdpi.RunCapture("netsh.exe", string.Format("interface ipv4 set dnsservers name={0} source=dhcp", p.GetIPv4Properties().Index));
                         try { Gdpi.RunCapture("netsh.exe", string.Format("interface ipv6 set dnsservers name={0} source=dhcp", p.GetIPv6Properties().Index)); } catch { }
-                        Log("   -> " + n.Name + ": đã về tự động.");
+                        Log("   -> " + n.Name + ": xong.");
                     }
                     catch { }
                 }
                 try { Program.DnsFlushResolverCache(); } catch { }
-                Log("Xong. DNS đã về mặc định của nhà mạng.");
+                Log("Xong. Mạng đã về cài đặt mặc định.");
             });
         }
 
